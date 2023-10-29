@@ -16,17 +16,17 @@ Loss function code from [Insight Face](https://github.com/deepinsight/insightfac
 
 ```python
 import torch
-from ellzaf_ml.ghostfacenetv2 import ghostfacenetv2
+from ellzaf_ml.ghostfacenetsv2 import ghostfacenetsv2
 
 IMAGE_SIZE = 112
 
 #return embedding
-model = ghostfacenetv2(image_size=IMAGE_SIZE, width=1, dropout=0., args=None)
+model = ghostfacenetsv2(image_size=IMAGE_SIZE, width=1, dropout=0., args=None)
 img = torch.randn(3, 3, IMAGE_SIZE, IMAGE_SIZE)
 display(model(img))
 
 #return classification
-model = ghostfacenetv2(image_size=IMAGE_SIZE, num_classes=3, width=1, dropout=0., args=None)
+model = ghostfacenetsv2(image_size=IMAGE_SIZE, num_classes=3, width=1, dropout=0., args=None)
 img = torch.randn(3, 3, IMAGE_SIZE, IMAGE_SIZE)
 model(img)
 ```
