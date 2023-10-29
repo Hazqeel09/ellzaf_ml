@@ -7,6 +7,7 @@ $ pip install ellzaf_ml
 ```
 
 ## GhostFaceNets
+<img src="./images/ghostfacenetsv2.png"></img>
 PyTorch version of [GhostFaceNets](https://github.com/HamadYA/GhostFaceNets/tree/main).
 
 GhostNetV2 code from [Huawei Noah's Ark Lab](https://github.com/huawei-noah/Efficient-AI-Backbones/tree/master).
@@ -37,6 +38,8 @@ In order to not use GAP like mentioned in the paper, you need to specify the ima
 - [ ] Create training code.
 
 ## SpectFormer
+<img src="./images/spectformer.png"></img>
+
 Implementation of [SpectFormer](https://arxiv.org/abs/2304.06446).
 Code is modified version of ViT from [Vit-PyTorch](https://github.com/lucidrains/vit-pytorch/tree/main).
 
