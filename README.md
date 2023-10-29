@@ -67,6 +67,7 @@ preds =  model(img) #prediction -> (1,1000)
 SpectFormer utilizes both spectral block and attention block. The amount of spectral block can be speciified using spect_alpha and the remaining block from depth will be attention blocks.
 
 depth - spect_alpha = attention block
+
 12 - 4 = 8
 
 From the code and calculation example above, when spect_alpha are 4 with the depth of 12. The resulting attention block will be 8. If spect_alpha == depth, it will be GFNet while if spect_alpa = 0, it will be ViT.
