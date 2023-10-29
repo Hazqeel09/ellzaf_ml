@@ -40,7 +40,8 @@ In order to not use GAP like mentioned in the paper, you need to specify the ima
 ## SpectFormer
 <img src="./images/spectformer.png"></img>
 
-Implementation of [SpectFormer](https://arxiv.org/abs/2304.06446).
+Implementation of [SpectFormer](https://arxiv.org/abs/2304.06446) vanilla architecture.
+
 Code is modified version of ViT from [Vit-PyTorch](https://github.com/lucidrains/vit-pytorch/tree/main).
 
 ```python
