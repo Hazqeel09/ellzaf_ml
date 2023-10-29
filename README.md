@@ -33,7 +33,7 @@ model(img)
 
 In order to not use GAP like mentioned in the paper, you need to specify the image size.
 
-# TODO
+### TODO
 - [x] Replicate model.
 - [ ] Create training code.
 
@@ -58,7 +58,7 @@ model = SpectFormer(
         mlp_dim = 1024,
         dropout = 0.1,
         spect_alpha = 4, # amount of spectral block (depth - spect_alpha = attention block)
-        ) 
+) 
 
 img = torch.randn(1, 3, 224, 224)
 preds =  model(img) #prediction -> (1,1000)
