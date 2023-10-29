@@ -56,7 +56,6 @@ model = SpectFormer(
         depth = 12,
         heads = 16,
         mlp_dim = 1024,
-        dropout = 0.1,
         spect_alpha = 4, # amount of spectral block (depth - spect_alpha = attention block)
 ) 
 
