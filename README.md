@@ -1,6 +1,8 @@
 # Ellzaf ML
 Implementations of ML papers in PyTorch
+
 [![Downloads](https://static.pepy.tech/badge/ellzaf_ml)](https://pepy.tech/project/ellzaf_ml)
+
 [![Downloads](https://static.pepy.tech/badge/ellzaf_ml/month)](https://pepy.tech/project/ellzaf_ml)
 
 ## Install
