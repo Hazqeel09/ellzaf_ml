@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'ellzaf_ml',
   packages = find_packages(),
-  version = '0.1.1',
+  version = '0.2.0',
   license='MIT',
   description = 'Ellzaf ML',
   long_description_content_type = 'text/markdown',
@@ -28,6 +28,8 @@ setup(
     'torch==1.12.1',
     'torchvision==0.13.1'
   ],
+  # Supported Python versions
+  python_requires=">=3.9",
   classifiers=[
     'Development Status :: 4 - Beta',
     'Intended Audience :: Developers',
