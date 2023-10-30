@@ -60,7 +60,7 @@ model = SpectFormer(
 ) 
 
 img = torch.randn(1, 3, 224, 224)
-preds =  model(img) #prediction -> (1,1000)
+preds =  model(img) # prediction -> (1,1000)
 ```
 
 SpectFormer utilizes both spectral block and attention block. The amount of spectral block can be speciified using spect_alpha and the remaining block from depth will be attention blocks.
@@ -70,3 +70,18 @@ depth - spect_alpha = attention block
 12 - 4 = 8
 
 From the code and calculation example above, when spect_alpha are 4 with the depth of 12. The resulting attention block will be 8. If spect_alpha == depth, it will be GFNet while if spect_alpa = 0, it will be ViT.
+
+## LBP and CNN Feature Fusion for face anti-spoofing
+<img src="./images/lbpcnnff.png"></img>
+
+Implementation of [LBP and CNN Feature Fusion for face anti-spoofing](https://link.springer.com/article/10.1007/s10044-023-01132-4)
+
+```python
+import torch
+from ellzaf_ml.lcff import LBPCNNFeatureFusion
+
+model = LBPCNNFeatureFusion(num_classes=2)
+img = torch.rand(1, 3, 224, 224)
+preds = model(img) # prediction -> (1,2)
+```
+This model is primarily used for face liveness.
