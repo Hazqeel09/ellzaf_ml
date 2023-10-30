@@ -57,8 +57,9 @@ class LBPCNNFeatureFusion(nn.Module):
             nn.MaxPool2d(2, 2),
         )
 
-        self.fusion_conv = nn.Conv2d(512, 512, kernel_size=3, padding=1)
+        self.conv = nn.Conv2d(512, 512, kernel_size=3, padding=1)
         self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
         self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
 
         self.fc = nn.Linear(512 * 7 * 7, 512)
@@ -75,7 +76,11 @@ class LBPCNNFeatureFusion(nn.Module):
         x_lbp = self.block2(x_lbp)
 
         cat_x = torch.cat((x_rgb, x_lbp), dim=1)
-        cat_x = self.fusion_conv(cat_x)
+        cat_x = self.conv(cat_x)
+        cat_x = self.relu(cat_x)
+        cat_x = self.pool(cat_x)
+        cat_x = self.conv2(cat_x)
+        cat_x = self.relu(cat_x)
         cat_x = self.pool(cat_x)
         cat_x = self.avgpool(cat_x)
 
