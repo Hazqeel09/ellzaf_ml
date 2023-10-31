@@ -78,7 +78,7 @@ class LBPCNNFeatureFusion(nn.Module):
         elif self.backbone == "mobilenetv3":
             self.adapt_channels = nn.Conv2d(512, 3, kernel_size=1)
             self.mobilenetv3 = timm.create_model('mobilenetv3_large_100.ra_in1k', pretrained=pretrained)
-            self.mobilenetv3.classifier = nn.Linear(960, num_classes)
+            self.mobilenetv3.classifier = nn.Linear(self.mobilenetv3.classifier.in_features, num_classes)
             
     def forward(self, x):
         # Convert to grayscale for LBP
@@ -92,10 +92,7 @@ class LBPCNNFeatureFusion(nn.Module):
 
         if self.backbone == "mobilenetv3":
             x = self.adapt_channels(cat_x)
-            x = self.mobilenetv3.forward_features(x)
-            x = self.mobilenetv3.global_pool(x)
-            x = torch.flatten(x, 1)
-            x = self.mobilenetv3.classifier(x)
+            x = self.mobilenetv3(x)
         else:  # If no backbone is specified, use the default series of layers
             x = self.fusion_and_classify(cat_x)
         return x
