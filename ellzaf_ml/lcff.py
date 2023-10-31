@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import timm
 
 class LBPLayer(nn.Module):
     def __init__(self):
@@ -28,7 +29,7 @@ class LBPLayer(nn.Module):
         return lbp_image.float()  # Convert to float for subsequent layers
 
 class LBPCNNFeatureFusion(nn.Module):
-    def __init__(self, num_classes=2):
+    def __init__(self, num_classes=2, pretrained=True, backbone=None):
         super(LBPCNNFeatureFusion, self).__init__()
 
         self.lbp_layer = LBPLayer()
@@ -57,15 +58,26 @@ class LBPCNNFeatureFusion(nn.Module):
             nn.MaxPool2d(2, 2),
         )
 
-        self.conv = nn.Conv2d(512, 512, kernel_size=3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(512, 512, kernel_size=3, padding=1)
-        self.avgpool = nn.AdaptiveAvgPool2d((7, 7))
-
-        self.fc = nn.Linear(512 * 7 * 7, 512)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(512, 128)
-        self.fc3 = nn.Linear(128, num_classes)
+        if backbone = None:
+            self.fusion_and_classify = nn.Sequential(
+                nn.Conv2d(512, 512, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.Conv2d(512, 512, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2),
+                nn.AdaptiveAvgPool2d((7, 7)),
+                nn.Flatten(),
+                nn.Linear(512*7*7, 512),
+                nn.ReLU(),
+                nn.Linear(512, 128),
+                nn.ReLU(),
+                nn.Linear(128, num_classes)
+            )
+        if backbone = "mobilenetv3":
+            self.mobilenetv3 = timm.create_model('mobilenetv3_large_100_ra_in1k', pretrained=pretrained)
+            self.mobilenetv3.classifier = nn.Linear(self.mobilenetv3.classifier.in_features, num_classes)
+            self.adapt_channels = nn.Conv2d(512, 3, kernel_size=1)
 
     def forward(self, x):
         # Convert to grayscale for LBP
@@ -76,18 +88,13 @@ class LBPCNNFeatureFusion(nn.Module):
         x_lbp = self.block2(x_lbp)
 
         cat_x = torch.cat((x_rgb, x_lbp), dim=1)
-        cat_x = self.conv(cat_x)
-        cat_x = self.relu(cat_x)
-        cat_x = self.pool(cat_x)
-        cat_x = self.conv2(cat_x)
-        cat_x = self.relu(cat_x)
-        cat_x = self.pool(cat_x)
-        cat_x = self.avgpool(cat_x)
 
-        cat_x = torch.flatten(cat_x, 1)
-
-        cat_x = self.fc(cat_x)
-        cat_x = self.relu(cat_x)
-        cat_x = self.fc2(cat_x)
-        cat_x = self.relu(cat_x)
-        return self.fc3(cat_x)
+        if self.backbone == "mobilenetv3":
+            cat_x = self.adapt_channels(cat_x)
+            x = self.mobilenetv3.forward_features(cat_x)
+            x = self.mobilenetv3.global_pool(x)
+            x = torch.flatten(x, 1)
+            x = self.mobilenetv3.classifier(x)
+        else:  # If no backbone is specified, use the default series of layers
+            x = self.fusion_and_classify(cat_x)
+        return x
