@@ -95,6 +95,6 @@ import torch
 from ellzaf_ml.lcff import LBPCNNFeatureFusion
 
 model = LBPCNNFeatureFusion(num_classes=2, backbone="mobilenetv3")
-img = torch.rand(1, 3, 224, 224)
+img = torch.rand(3, 3, 224, 224)
 preds = model(img) # prediction -> (1,2)
 ```
