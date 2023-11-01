@@ -32,7 +32,7 @@ class LBPCNNFeatureFusion(nn.Module):
     def __init__(self, num_classes=2, adapt=False, adapt_channels=3, backbone=None, backbone_model=None):
         super(LBPCNNFeatureFusion, self).__init__()
 
-        assert backbone is not None and backbone_model is None, 'You need to specify both backbone name and backbone model'
+        assert backbone is not None and backbone_model is not None, 'You need to specify both backbone name and backbone model'
         
         self.backbone = backbone
 
