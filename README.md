@@ -94,6 +94,8 @@ I also modified it to use with other models as backbone after concatenating the 
 
 You can modify the number of channels after the features are concatenated using adapt and adapt_channels.
 
+In order to obtain the image size for backbone model, you need to divide your current image size with 8.
+
 #### MobileNetV3
 We need to use adapt=True so that the number of channels will be 3 instead of 512.
 ```python
@@ -140,9 +142,9 @@ import torch
 from ellzaf_ml.lcff import LBPCNNFeatureFusion
 from ellzaf_ml.ghostfacenetsv2 import ghostfacenetsv2
 
-gfn_m = ghostfacenetsv2(image_size=IMAGE_SIZE, width=1, channels=10, dropout=0., args=None)
+gfn_m = ghostfacenetsv2(image_size=28, width=1, channels=10, dropout=0., args=None)
 
-model = LBPCNNFeatureFusion(num_classes=2, backbone="spectformer", adapt=True, adapt_channels=10, backbone_model=gfn_m),
+model = LBPCNNFeatureFusion(num_classes=2, backbone="ghostfacenets", adapt=True, adapt_channels=10, backbone_model=gfn_m),
 img = torch.rand(3, 3, 224, 224)
 preds = model(img) # prediction -> (3,2)
 ```
