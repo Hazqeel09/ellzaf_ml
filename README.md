@@ -145,6 +145,7 @@ preds = model(img) # prediction -> (3,2)
 
 #### GhostFaceNets
 If you prefer different number of channels instead, you can specify it using adapt_channels.
+
 Note: GhostFaceNets only works with image_size higher than 32.
 ```python
 import torch
