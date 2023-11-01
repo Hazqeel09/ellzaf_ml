@@ -95,6 +95,7 @@ This model is primarily used for face liveness.
 
 ### Experimental
 I also modified it to use with other models as backbone after concatenating the features from the two blocks.
+You need to specify the number of classes from the backend model instead of LBPCNNFeatureFusion.
 
 You can modify the number of channels after the features are concatenated using adapt and adapt_channels.
 
@@ -125,7 +126,7 @@ from ellzaf_ml.spectformer import SpectFormer
 spect_m = SpectFormer(
     image_size = 28,
     patch_size = 7,
-    num_classes = 2,
+    num_classes = 2, # specify amount of classes here
     channels = 512, #512 channels if you want to change only the backbone
     dim = 256,
     depth = 12,
@@ -135,7 +136,7 @@ spect_m = SpectFormer(
     ff_dropout = 0.1,
     spect_alpha = 4, # amount of spectral block (depth - spect_alpha = attention block)
 )
-model = LBPCNNFeatureFusion(num_classes=2, backbone="spectformer", backbone_model=spect_m),
+model = LBPCNNFeatureFusion(backbone="spectformer", backbone_model=spect_m)
 img = torch.rand(3, 3, 224, 224)
 preds = model(img) # prediction -> (3,2)
 ```
@@ -147,9 +148,9 @@ import torch
 from ellzaf_ml.lcff import LBPCNNFeatureFusion
 from ellzaf_ml.ghostfacenetsv2 import ghostfacenetsv2
 
-gfn_m = ghostfacenetsv2(image_size=28, width=1, channels=10, dropout=0., args=None)
+gfn_m = ghostfacenetsv2(image_size=28, width=1,  num_classes=3, channels=10, dropout=0., args=None)
 
-model = LBPCNNFeatureFusion(num_classes=2, backbone="ghostfacenets", adapt=True, adapt_channels=10, backbone_model=gfn_m),
+model = LBPCNNFeatureFusion(backbone="ghostfacenets", adapt=True, adapt_channels=10, backbone_model=gfn_m)
 img = torch.rand(3, 3, 224, 224)
 preds = model(img) # prediction -> (3,2)
 ```
