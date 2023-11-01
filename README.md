@@ -36,6 +36,8 @@ model(img)
 
 In order to not use GAP like mentioned in the paper, you need to specify the image size.
 
+You also need to have image_size>=32.
+
 ### TODO
 - [x] Replicate model.
 - [ ] Create training code.
@@ -142,15 +144,4 @@ preds = model(img) # prediction -> (3,2)
 ```
 
 #### GhostFaceNets
-If you prefer different number of channels instead, you can specify it using adapt_channels.
-```python
-import torch
-from ellzaf_ml.lcff import LBPCNNFeatureFusion
-from ellzaf_ml.ghostfacenetsv2 import ghostfacenetsv2
-
-gfn_m = ghostfacenetsv2(image_size=28, width=1,  num_classes=3, channels=10, dropout=0., args=None)
-
-model = LBPCNNFeatureFusion(backbone="ghostfacenets", adapt=True, adapt_channels=10, backbone_model=gfn_m)
-img = torch.rand(3, 3, 224, 224)
-preds = model(img) # prediction -> (3,2)
-```
+It will not work with GhostFaceNets because GhostFaceNets requires the image size to be more than 32.
