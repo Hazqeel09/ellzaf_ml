@@ -40,6 +40,8 @@ In order to not use GAP like mentioned in the paper, you need to specify the ima
 - [x] Replicate model.
 - [ ] Create training code.
 
+
+
 ## SpectFormer
 <img src="./images/spectformer.png"></img>
 
@@ -73,6 +75,8 @@ depth - spect_alpha = attention block
 12 - 4 = 8
 
 From the code and calculation example above, when spect_alpha are 4 with the depth of 12. The resulting attention block will be 8. If spect_alpha == depth, it will be GFNet while if spect_alpa = 0, it will be ViT.
+
+
 
 ## LBP and CNN Feature Fusion for face anti-spoofing
 <img src="./images/lbpcnnff.png"></img>
