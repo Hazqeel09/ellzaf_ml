@@ -104,6 +104,7 @@ In order to obtain the image size for backbone model, you need to divide your cu
 We need to use adapt=True so that the number of channels will be 3 instead of 512.
 ```python
 import torch
+import timm
 from ellzaf_ml.lcff import LBPCNNFeatureFusion
 
 mobilenetv3 = timm.create_model('mobilenetv3_large_100.ra_in1k', pretrained=pretrained)
