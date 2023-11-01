@@ -29,12 +29,18 @@ class LBPLayer(nn.Module):
         return lbp_image.float()  # Convert to float for subsequent layers
 
 class LBPCNNFeatureFusion(nn.Module):
-    def __init__(self, num_classes=2, pretrained=True, backbone=None):
+    def __init__(self, num_classes=2, adapt=False, adapt_channels=3, backbone=None, backbone_model=None):
         super(LBPCNNFeatureFusion, self).__init__()
+
+        assert backbone is not None and backbone_model is None, 'You need to add a backbone model'
+        
         self.backbone = backbone
 
         self.lbp_layer = LBPLayer()
 
+        self.adapt = adapt
+        self.adapt_channels = nn.Conv2d(512, adapt_channels, kernel_size=1)
+        
         self.block1 = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=3, padding=1),
             nn.ReLU(),
@@ -75,10 +81,8 @@ class LBPCNNFeatureFusion(nn.Module):
                 nn.ReLU(),
                 nn.Linear(128, num_classes)
             )
-        elif self.backbone == "mobilenetv3":
-            self.adapt_channels = nn.Conv2d(512, 3, kernel_size=1)
-            self.mobilenetv3 = timm.create_model('mobilenetv3_large_100.ra_in1k', pretrained=pretrained)
-            self.mobilenetv3.classifier = nn.Linear(self.mobilenetv3.classifier.in_features, num_classes)
+        else:
+            self.backbone_model = backbone_model
             
     def forward(self, x):
         # Convert to grayscale for LBP
@@ -90,9 +94,11 @@ class LBPCNNFeatureFusion(nn.Module):
 
         cat_x = torch.cat((x_rgb, x_lbp), dim=1)
 
-        if self.backbone == "mobilenetv3":
-            x = self.adapt_channels(cat_x)
-            x = self.mobilenetv3(x)
+        if self.adapt:
+            cat_x = self.adapt_channels(cat_x)
+
+        if self.backbone:
+            x = backbone_model(cat_x)
         else:  # If no backbone is specified, use the default series of layers
             x = self.fusion_and_classify(cat_x)
         return x

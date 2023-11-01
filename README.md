@@ -26,7 +26,7 @@ IMAGE_SIZE = 112
 #return embedding
 model = ghostfacenetsv2(image_size=IMAGE_SIZE, width=1, dropout=0., args=None)
 img = torch.randn(3, 3, IMAGE_SIZE, IMAGE_SIZE)
-display(model(img))
+model(img)
 
 #return classification
 model = ghostfacenetsv2(image_size=IMAGE_SIZE, num_classes=3, width=1, dropout=0., args=None)
@@ -89,12 +89,60 @@ preds = model(img) # prediction -> (1,2)
 ```
 This model is primarily used for face liveness.
 
-I also modified it to use with MobileNetV3 after concatenating the features from the two blocks.
+### Experimental
+I also modified it to use with other models as backbone after concatenating the features from the two blocks.
+
+You can modify the number of channels after the features are concatenated using adapt and adapt_channels.
+
+#### MobileNetV3
+We need to use adapt=True so that the number of channels will be 3 instead of 512.
 ```python
 import torch
 from ellzaf_ml.lcff import LBPCNNFeatureFusion
 
-model = LBPCNNFeatureFusion(num_classes=2, backbone="mobilenetv3")
+mobilenetv3 = timm.create_model('mobilenetv3_large_100.ra_in1k', pretrained=pretrained)
+mobilenetv3.classifier = nn.Linear(self.mobilenetv3.classifier.in_features, 2) #specify number of class here
+
+model = LBPCNNFeatureFusion(backbone="mobilenetv3", adapt=True, backbone_model=mobilenetv3)
+img = torch.rand(3, 3, 224, 224)
+preds = model(img) # prediction -> (3,2)
+```
+
+#### SpectFormer
+You can choose to use the 512 channels from the concatenated block output or adapt like MobileNetV3.
+```python
+import torch
+from ellzaf_ml.lcff import LBPCNNFeatureFusion
+from ellzaf_ml.spectformer import SpectFormer
+
+spect_m = SpectFormer(
+    image_size = 28,
+    patch_size = 7,
+    num_classes = 2,
+    channels = 512, #512 channels if you want to change only the backbone
+    dim = 256,
+    depth = 12,
+    heads = 4,
+    mlp_dim = 512,
+    att_dropout = 0.01,
+    ff_dropout = 0.1,
+    spect_alpha = 4, # amount of spectral block (depth - spect_alpha = attention block)
+)
+model = LBPCNNFeatureFusion(num_classes=2, backbone="spectformer", backbone_model=spect_m),
+img = torch.rand(3, 3, 224, 224)
+preds = model(img) # prediction -> (3,2)
+```
+
+#### GhostFaceNets
+If you prefer different number of channels instead, you can specify it using adapt_channels.
+```python
+import torch
+from ellzaf_ml.lcff import LBPCNNFeatureFusion
+from ellzaf_ml.ghostfacenetsv2 import ghostfacenetsv2
+
+gfn_m = ghostfacenetsv2(image_size=IMAGE_SIZE, width=1, channels=10, dropout=0., args=None)
+
+model = LBPCNNFeatureFusion(num_classes=2, backbone="spectformer", adapt=True, adapt_channels=10, backbone_model=gfn_m),
 img = torch.rand(3, 3, 224, 224)
 preds = model(img) # prediction -> (3,2)
 ```

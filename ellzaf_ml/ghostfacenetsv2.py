@@ -196,14 +196,14 @@ class GhostBottleneckV2(nn.Module):
 
    
 class GhostFaceNetV2(nn.Module):
-    def __init__(self, cfgs, image_size=256, num_classes=1000, width=1.0, dropout=0.2, block=GhostBottleneckV2,
+    def __init__(self, cfgs, image_size=256, num_classes=1000, width=1.0, channels=3 dropout=0.2, block=GhostBottleneckV2,
                  add_pointwise_conv=False, args=None):
         super(GhostFaceNetV2, self).__init__()
         self.cfgs = cfgs
 
         # building first layer
         output_channel = _make_divisible(16 * width, 4)
-        self.conv_stem = nn.Conv2d(3, output_channel, 3, 2, 1, bias=False)
+        self.conv_stem = nn.Conv2d(channels, output_channel, 3, 2, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(output_channel)
         self.act1 = nn.PReLU()
         input_channel = output_channel
@@ -249,7 +249,7 @@ class GhostFaceNetV2(nn.Module):
         x = self.classifier(x)
         return x
 
-def ghostfacenetsv2(bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, **kwargs):
+def ghostfacenetsv2(bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, channels=3, **kwargs):
     cfgs = [   
         # k, t, c, SE, s 
         [[3,  16,  16, 0, 1]],
@@ -274,6 +274,7 @@ def ghostfacenetsv2(bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, **kwargs
 
     GhostFaceNet = GhostFaceNetV2(cfgs, image_size=kwargs['image_size'],
                                   num_classes=num_classes,
+                                  channels=channels,
                                   width=kwargs['width'],
                                   dropout=kwargs['dropout'],
                                   args=kwargs['args'])
