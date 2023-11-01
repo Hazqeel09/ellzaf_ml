@@ -196,7 +196,7 @@ class GhostBottleneckV2(nn.Module):
 
    
 class GhostFaceNetV2(nn.Module):
-    def __init__(self, cfgs, image_size=256, num_classes=1000, width=1.0, channels=3 dropout=0.2, block=GhostBottleneckV2,
+    def __init__(self, cfgs, image_size=256, num_classes=1000, width=1.0, channels=3, dropout=0.2, block=GhostBottleneckV2,
                  add_pointwise_conv=False, args=None):
         super(GhostFaceNetV2, self).__init__()
         self.cfgs = cfgs
