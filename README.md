@@ -9,6 +9,9 @@ Implementations of ML papers in PyTorch
 $ pip install ellzaf_ml
 ```
 
+### Experimental
+Any model that can be use in different way from the paper will be inside Experimental tag.
+
 ## GhostFaceNets
 <img src="./images/ghostfacenetsv2.png"></img>
 PyTorch version of [GhostFaceNets](https://github.com/HamadYA/GhostFaceNets/tree/main).
@@ -96,7 +99,7 @@ preds = model(img) # prediction -> (1,2)
 This model is primarily used for face liveness.
 
 <details>
-    <summary> 🔬 Experimental </summary>
+    <summary> 🔬 Experimental [Click Here] </summary>
 I also modified it to use with other models as backbone after concatenating the features from the two blocks.
 You need to specify the number of classes from the backend model instead of LBPCNNFeatureFusion.
 
@@ -162,7 +165,11 @@ preds = model(img) # prediction -> (3,2)
 </details>
 
 ## LDnet with the combination of 2D and 3D
-Implementation of [A novel Deep CNN based LDnet model with the combination of 2D and 3D CNN for Face Liveness Detection](https://ieeexplore.ieee.org/document/9914362)
+<img src="./images/ldnet.png"></img>
+
+Implementation of [A novel Deep CNN based LDnet model with the combination of 2D and 3D CNN for Face Liveness Detection.](https://ieeexplore.ieee.org/document/9914362)
+
+This model primary use is for face liveness.
 ```python
 import torch
 from ellzaf_ml.ldnet import LDnet
