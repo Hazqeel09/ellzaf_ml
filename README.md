@@ -158,3 +158,14 @@ model = LBPCNNFeatureFusion(backbone="ghostfacenets", adapt=True, adapt_channels
 img = torch.rand(3, 3, 264, 264)
 preds = model(img) # prediction -> (3,2)
 ```
+
+## LDnet with the combination of 2D and 3D
+Implementation of [A novel Deep CNN based LDnet model with the combination of 2D and 3D CNN for Face Liveness Detection](https://ieeexplore.ieee.org/document/9914362)
+```python
+import torch
+from ellzaf_ml.ldnet import LDnet
+
+model = LDnet(image_size=64)
+img = torch.rand(1, 3, 64, 64)
+preds = model(img) # prediction -> (1,2)
+```
