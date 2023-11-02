@@ -95,7 +95,8 @@ preds = model(img) # prediction -> (1,2)
 ```
 This model is primarily used for face liveness.
 
-### Experimental
+<details>
+    <summary> 🔬 Experimental </summary>
 I also modified it to use with other models as backbone after concatenating the features from the two blocks.
 You need to specify the number of classes from the backend model instead of LBPCNNFeatureFusion.
 
@@ -158,6 +159,7 @@ model = LBPCNNFeatureFusion(backbone="ghostfacenets", adapt=True, adapt_channels
 img = torch.rand(3, 3, 264, 264)
 preds = model(img) # prediction -> (3,2)
 ```
+</details>
 
 ## LDnet with the combination of 2D and 3D
 Implementation of [A novel Deep CNN based LDnet model with the combination of 2D and 3D CNN for Face Liveness Detection](https://ieeexplore.ieee.org/document/9914362)
