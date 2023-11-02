@@ -88,6 +88,8 @@ From the code and calculation example above, when spect_alpha are 4 with the dep
 
 Implementation of [LBP and CNN Feature Fusion for face anti-spoofing](https://link.springer.com/article/10.1007/s10044-023-01132-4)
 
+This model is primarily used for face liveness.
+
 ```python
 import torch
 from ellzaf_ml.lcff import LBPCNNFeatureFusion
@@ -96,7 +98,6 @@ model = LBPCNNFeatureFusion(num_classes=2)
 img = torch.rand(1, 3, 224, 224)
 preds = model(img) # prediction -> (1,2)
 ```
-This model is primarily used for face liveness.
 
 <details>
     <summary> 🔬 Experimental [Click Here] </summary>
