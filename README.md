@@ -115,8 +115,8 @@ import torch
 import timm
 from ellzaf_ml.lcff import LBPCNNFeatureFusion
 
-mobilenetv3 = timm.create_model('mobilenetv3_large_100.ra_in1k', pretrained=pretrained)
-mobilenetv3.classifier = nn.Linear(self.mobilenetv3.classifier.in_features, 2) #specify number of class here
+mobilenetv3 = timm.create_model('mobilenetv3_large_100.ra_in1k', pretrained=True)
+mobilenetv3.classifier = nn.Linear(mobilenetv3.classifier.in_features, 2) #specify number of class here
 
 model = LBPCNNFeatureFusion(backbone="mobilenetv3", adapt=True, backbone_model=mobilenetv3)
 img = torch.rand(3, 3, 224, 224)
