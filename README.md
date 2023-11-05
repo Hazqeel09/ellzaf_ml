@@ -4,15 +4,24 @@ Implementations of ML papers in PyTorch
 [![Downloads](https://static.pepy.tech/badge/ellzaf_ml)](https://pepy.tech/project/ellzaf_ml)
 [![Downloads](https://static.pepy.tech/badge/ellzaf_ml/month)](https://pepy.tech/project/ellzaf_ml)
 
-## Install
+## 📦Install
 ```bash
 $ pip install ellzaf_ml
 ```
 
-### Experimental
+### ❓Requests
+If you have any papers that are not implemented in PyTorch or not yet implemented in any frameowrks, you can open an issue for this.
+
+### 🔬 Experimental
 Any model that can be use in different way from the paper will be inside Experimental tag.
 
-## GhostFaceNets
+## Contents
+1. [GhostFaceNets](https://github.com/Hazqeel09/ellzaf_ml#ghostfacenets)
+2. [SpectFormer](https://github.com/Hazqeel09/ellzaf_ml#spectformer)
+3. [LBP and CNN Feature Fusion for face anti-spoofing](https://github.com/Hazqeel09/ellzaf_ml#lbp-and-cnn-feature-fusion-for-face-anti-spoofing)
+4. [LDnet with the combination of 2D and 3D]([https://github.com/Hazqeel09/ellzaf_ml#ghostfacenets](https://github.com/Hazqeel09/ellzaf_ml#ldnet-with-the-combination-of-2d-and-3d))
+
+## 🌟GhostFaceNets
 <img src="./images/ghostfacenetsv2.png"></img>
 PyTorch version of [GhostFaceNets](https://github.com/HamadYA/GhostFaceNets/tree/main).
 
@@ -47,7 +56,7 @@ You also need to have image_size>=33.
 
 
 
-## SpectFormer
+## 🌟SpectFormer
 <img src="./images/spectformer.png"></img>
 
 Implementation of [SpectFormer](https://arxiv.org/abs/2304.06446) vanilla architecture.
@@ -83,7 +92,7 @@ From the code and calculation example above, when spect_alpha are 4 with the dep
 
 
 
-## LBP and CNN Feature Fusion for face anti-spoofing
+## 🌟LBP and CNN Feature Fusion for face anti-spoofing
 <img src="./images/lbpcnnff.png"></img>
 
 Implementation of [LBP and CNN Feature Fusion for face anti-spoofing](https://link.springer.com/article/10.1007/s10044-023-01132-4)
@@ -165,7 +174,7 @@ preds = model(img) # prediction -> (3,2)
 ```
 </details>
 
-## LDnet with the combination of 2D and 3D
+## 🌟LDnet with the combination of 2D and 3D
 <img src="./images/ldnet.png"></img>
 
 Implementation of [A novel Deep CNN based LDnet model with the combination of 2D and 3D CNN for Face Liveness Detection.](https://ieeexplore.ieee.org/document/9914362)
