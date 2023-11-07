@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'ellzaf_ml',
   packages = find_packages(),
-  version = '0.4.0',
+  version = '0.4.1',
   license='MIT',
   description = 'Ellzaf ML',
   long_description_content_type = 'text/markdown',
@@ -18,6 +18,8 @@ setup(
     'einops>=0.7.0',
     'torch>=1.10',
     'torchvision',
+    'mediapipe',
+    'opencv-python',
     'timm>=0.9.0',
   ],
   setup_requires=[

@@ -46,7 +46,8 @@ from ellzaf_ml.patchswap import PatchSwap
 
 swapper = PatchSwap()
 image_a, image_b = swapper.swap_features('path/to/face_imageA.jpg', 'path/to/face_imageB.jpg')
-swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A') # optional
+# optional to see the image
+swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A')
 ```
 
 Key differences:
