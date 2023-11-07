@@ -2,7 +2,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-class FaceFeatureSwapper:
+class PatchSwap:
     def __init__(self):
         self.mp_face_mesh = mp.solutions.face_mesh
         self.face_mesh = self.mp_face_mesh.FaceMesh(static_image_mode=True, max_num_faces=1, min_detection_confidence=0.5)
@@ -85,6 +85,6 @@ class FaceFeatureSwapper:
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-swapper = FaceFeatureSwapper()
+swapper = PatchSwap()
 image_a, image_b = swapper.swap_features('face_live/facespoof_train/ori/000446.jpg', 'face_live/facespoof_train/ori/000459.jpg')
-swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A)
+swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A')

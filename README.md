@@ -16,11 +16,37 @@ If you have any papers that are not implemented in PyTorch or not yet implemente
 Any model that can be use in different way from the paper will be inside Experimental tag.
 
 ## Contents
+🦾Data Augmentation
+1. [PatchSwap](https://github.com/Hazqeel09/ellzaf_ml#patchswap)
+🗲 Models
 1. [GhostFaceNets](https://github.com/Hazqeel09/ellzaf_ml#ghostfacenets)
 2. [SpectFormer](https://github.com/Hazqeel09/ellzaf_ml#spectformer)
 3. [LBP and CNN Feature Fusion for face anti-spoofing](https://github.com/Hazqeel09/ellzaf_ml#lbp-and-cnn-feature-fusion-for-face-anti-spoofing)
 4. [LDnet with the combination of 2D and 3D](https://github.com/Hazqeel09/ellzaf_ml#ldnet-with-the-combination-of-2d-and-3d)
 
+# 🦾Data Augmentation
+## 💡PatchSwap
+An implementation of [PatchSwap: Boosting the Generalizability of Face Presentation Attack Detection by Identity-aware Patch Swapping](https://ieeexplore.ieee.org/document/10007946).
+
+PatchSwap applied to same person:
+<img src="./images/patchswap_sameperson.png"></img>
+
+PatchSwap applied to different person:
+<img src="./images/patchswap_diffperson.png"></img>
+
+```python
+from ellzaf_ml.patchswap import PatchSwap
+
+swapper = PatchSwap()
+image_a, image_b = swapper.swap_features('path/to/face_imageA.jpg', 'path/to/face_imageB.jpg')
+swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A') # optional
+```
+
+Key differences:
+1.  Instead of using dlib, I use MediaPipe for face landmark
+2.  I only swap eyes instead of eyes and eye brows
+
+# 🗲 Models
 ## 🌟GhostFaceNets
 <img src="./images/ghostfacenetsv2.png"></img>
 PyTorch version of [GhostFaceNets](https://github.com/HamadYA/GhostFaceNets/tree/main).
