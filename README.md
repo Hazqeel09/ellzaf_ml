@@ -35,6 +35,12 @@ PatchSwap applied to same person:
 PatchSwap applied to different person:
 <img src="./images/patchswap_diffperson.png"></img>
 
+First (Image A) and third (Image B) picture from the left are the original image.
+
+The second picture from the left is when the eyes, nose, and mouth from Image B is applied to Image A.
+
+The fourth picture from the left is when the eyes, nose, and mouth from Image A is applied to Image B.
+
 ```python
 from ellzaf_ml.patchswap import PatchSwap
 
