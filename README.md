@@ -15,7 +15,7 @@ If you have any papers that are not implemented in PyTorch or not yet implemente
 ### 🔬 Experimental
 Any model that can be use in different way from the paper will be inside Experimental tag.
 
-## Contents
+## 🔎 Contents
 🦾Data Augmentation
 1. [PatchSwap](https://github.com/Hazqeel09/ellzaf_ml#patchswap)
 
