@@ -40,9 +40,7 @@ def align_and_blend_features(image_src, image_dst, feature_src, mask_src, landma
     blended_image = cv2.seamlessClone(transformed_feature, image_dst, transformed_mask, center_point, cv2.NORMAL_CLONE)
     
     return blended_image
-
-
-
+    
 def landmarks_to_points(face_landmarks, image):
     # Convert face landmarks to points on the image
     return [(int(landmark.x * image.shape[1]), int(landmark.y * image.shape[0])) for landmark in face_landmarks.landmark]
@@ -60,16 +58,12 @@ def read_and_process_images(path_img_a, path_img_b):
     landmarks_b = landmarks_to_points(results_b.multi_face_landmarks[0], image_b)
     return image_a, image_b, landmarks_a, landmarks_b
 
-right_eye_idc1 = [463, 414, 286, 258, 257, 259, 260, 467, 446, 255, 339, 254, 253, 252, 256, 341]
-right_eye_idc2 = [463, 414, 286, 258, 257, 259, 260, 467, 359, 255, 339, 254, 253, 252, 256, 341]
-left_eye_idc1 = [243, 190, 56, 28, 27, 29, 30, 247, 130, 25, 110, 24, 23, 22, 26, 112]
-left_eye_idc2 = [243, 190, 56, 28, 27, 29, 30, 247, 226, 25, 110, 24, 23, 22, 26, 112]
-
 feature_indices = {
-    'right_eye': random.choice([right_eye_idc1, right_eye_idc2]),
-    'left_eye': random.choice([left_eye_idc1, left_eye_idc2]),
-    'nose': [8, 417, 465, 357, 343, 437, 355, 429, 279, 294, 327, 326, 2, 97, 98, 64, 49, 209, 198, 236, 174, 188, 245, 193],
-    'mouth': [164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43, 57, 186, 92, 165, 167]
+    'right_eye': [463, 414, 286, 258, 257, 259, 260, 467, 446, 255, 339, 254, 253, 252, 256, 341],
+    'left_eye': [243, 190, 56, 28, 27, 29, 30, 247, 226, 25, 110, 24, 23, 22, 26, 112],
+    'nose': [8, 417, 465, 412, 399, 456, 420, 429, 279, 358, 327, 326, 2, 97, 98, 129, 49, 209, 198, 236, 174, 188, 245, 193],
+    #'full_mouth': [164, 393, 391, 322, 410, 287, 273, 335, 406, 313, 18, 83, 182, 106, 43, 57, 186, 92, 165, 167],
+    'lips': [0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146, 61, 185, 40, 39, 37]
 }
 
 # Read and process the images
@@ -77,15 +71,11 @@ try:
     image_a, image_b, landmarks_a, landmarks_b = read_and_process_images('face_live/facespoof_train/ori/000446.jpg',
                                                                          'face_live/facespoof_train/ori/000459.jpg')
 
-    # Randomly choose indices for right and left eyes
-    right_eye_indices_chosen = random.choice([right_eye_idc1, right_eye_idc2])
-    left_eye_indices_chosen = random.choice([left_eye_idc1, left_eye_idc2])
-
     # Extract features from both images
     features_a = extract_features(image_a, landmarks_a, feature_indices)
     features_b = extract_features(image_b, landmarks_b, feature_indices)
 
-    for feature in ['right_eye', 'left_eye', 'nose', 'mouth']:
+    for feature in feature_indices.keys():
         image_b = align_and_blend_features(image_a, image_b, features_a[feature][0], features_a[feature][1], landmarks_a, landmarks_b, feature_indices[feature])
         image_a = align_and_blend_features(image_b, image_a, features_b[feature][0], features_b[feature][1], landmarks_b, landmarks_a, feature_indices[feature])
     
