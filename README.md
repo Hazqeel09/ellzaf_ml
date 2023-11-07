@@ -24,8 +24,8 @@ Any model that can be use in different way from the paper will be inside Experim
 3. [LBP and CNN Feature Fusion for face anti-spoofing](https://github.com/Hazqeel09/ellzaf_ml#lbp-and-cnn-feature-fusion-for-face-anti-spoofing)
 4. [LDnet with the combination of 2D and 3D](https://github.com/Hazqeel09/ellzaf_ml#ldnet-with-the-combination-of-2d-and-3d)
 
-# 🦾Data Augmentation
-## 💡PatchSwap
+## 🦾Data Augmentation
+### 💡PatchSwap
 An implementation of [PatchSwap: Boosting the Generalizability of Face Presentation Attack Detection by Identity-aware Patch Swapping](https://ieeexplore.ieee.org/document/10007946).
 
 PatchSwap applied to same person:
@@ -46,8 +46,8 @@ Key differences:
 1.  Instead of using dlib, I use MediaPipe for face landmark
 2.  I only swap eyes instead of eyes and eye brows
 
-# 🗲 Models
-## 🌟GhostFaceNets
+## 🗲 Models
+### 🌟GhostFaceNets
 <img src="./images/ghostfacenetsv2.png"></img>
 PyTorch version of [GhostFaceNets](https://github.com/HamadYA/GhostFaceNets/tree/main).
 
@@ -76,13 +76,13 @@ In order to not use GAP like mentioned in the paper, you need to specify the ima
 
 You also need to have image_size>=33.
 
-### TODO
+#### TODO
 - [x] Replicate model.
 - [ ] Create training code.
 
 
 
-## 🌟SpectFormer
+### 🌟SpectFormer
 <img src="./images/spectformer.png"></img>
 
 Implementation of [SpectFormer](https://arxiv.org/abs/2304.06446) vanilla architecture.
@@ -118,7 +118,7 @@ From the code and calculation example above, when spect_alpha are 4 with the dep
 
 
 
-## 🌟LBP and CNN Feature Fusion for face anti-spoofing
+### 🌟LBP and CNN Feature Fusion for face anti-spoofing
 <img src="./images/lbpcnnff.png"></img>
 
 Implementation of [LBP and CNN Feature Fusion for face anti-spoofing](https://link.springer.com/article/10.1007/s10044-023-01132-4)
@@ -200,7 +200,7 @@ preds = model(img) # prediction -> (3,2)
 ```
 </details>
 
-## 🌟LDnet with the combination of 2D and 3D
+### 🌟LDnet with the combination of 2D and 3D
 <img src="./images/ldnet.png"></img>
 
 Implementation of [A novel Deep CNN based LDnet model with the combination of 2D and 3D CNN for Face Liveness Detection.](https://ieeexplore.ieee.org/document/9914362)
