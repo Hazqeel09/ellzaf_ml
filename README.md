@@ -19,7 +19,7 @@ Any model that can be use in different way from the paper will be inside Experim
 🦾Data Augmentation
 1. [PatchSwap](https://github.com/Hazqeel09/ellzaf_ml#patchswap)
 
-🗲 Models
+⚡ Models
 1. [GhostFaceNets](https://github.com/Hazqeel09/ellzaf_ml#ghostfacenets)
 2. [SpectFormer](https://github.com/Hazqeel09/ellzaf_ml#spectformer)
 3. [LBP and CNN Feature Fusion for face anti-spoofing](https://github.com/Hazqeel09/ellzaf_ml#lbp-and-cnn-feature-fusion-for-face-anti-spoofing)
@@ -54,7 +54,7 @@ Key differences:
 1.  Instead of using dlib, I use MediaPipe for face landmark
 2.  I only swap eyes instead of eyes and eye brows
 
-## 🗲 Models
+## ⚡ Models
 ### 🌟GhostFaceNets
 <img src="./images/ghostfacenetsv2.png"></img>
 PyTorch version of [GhostFaceNets](https://github.com/HamadYA/GhostFaceNets/tree/main).
