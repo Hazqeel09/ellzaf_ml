@@ -84,7 +84,3 @@ class PatchSwap:
         cv2.imshow(titleB, imageB)
         cv2.waitKey(0)
         cv2.destroyAllWindows()
-
-swapper = PatchSwap()
-image_a, image_b = swapper.swap_features('face_live/facespoof_train/ori/000446.jpg', 'face_live/facespoof_train/ori/000459.jpg')
-swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A')

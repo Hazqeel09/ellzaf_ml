@@ -18,6 +18,7 @@ Any model that can be use in different way from the paper will be inside Experim
 ## Contents
 🦾Data Augmentation
 1. [PatchSwap](https://github.com/Hazqeel09/ellzaf_ml#patchswap)
+
 🗲 Models
 1. [GhostFaceNets](https://github.com/Hazqeel09/ellzaf_ml#ghostfacenets)
 2. [SpectFormer](https://github.com/Hazqeel09/ellzaf_ml#spectformer)
