@@ -40,7 +40,7 @@ Any model that can be use in different way from the paper will be inside Experim
 4. [LDnet with the combination of 2D and 3D](https://github.com/Hazqeel09/ellzaf_ml#ldnet-with-the-combination-of-2d-and-3d)
 
 🛠️ Tool
-1. [PyTorch Early Stopping](https://github.com/Hazqeel09/ellzaf_ml#earlystopping)
+1. [PyTorch Early Stopping](https://github.com/Hazqeel09/ellzaf_ml#-earlystopping)
 
 ## 🦾Data Augmentation
 ### 💡PatchSwap
