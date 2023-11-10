@@ -57,11 +57,10 @@ if image_a is not None and image_b is not None:
     swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A')
 
 # go through images in folder
-# Example of how to use the new method in the PatchSwap class
 input_dir = 'path/to/real_face_folder'
 output_dir = 'path/to/fake_face_folder'
 
-# Call the new class method with the input and output directories
+# Call the class method with the input and output directories
 swapper.swap_features_in_directory(input_dir, output_dir)
 ```
 
