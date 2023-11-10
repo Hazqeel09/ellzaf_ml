@@ -3,7 +3,7 @@
     <a align="center" href="" target="_blank">
       <img
         width="1280"
-        src="./images/ellzaf_ml.png"
+        src="./images/ellzafml.png"
       >
     </a>
   </p>
