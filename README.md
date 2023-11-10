@@ -46,13 +46,30 @@ from ellzaf_ml.patchswap import PatchSwap
 
 swapper = PatchSwap()
 image_a, image_b = swapper.swap_features('path/to/face_imageA.jpg', 'path/to/face_imageB.jpg')
-# optional to see the image
-swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A')
+
+# you can specify facial features that you want to swap, default value is ["right_eye", "left_eye", "nose", "lips"]
+image_c, image_d = swapper.swap_features('path/to/face_imageC.jpg',
+                                         'path/to/face_imageD.jpg',
+                                         features_to_swap=["left_eye", "nose",])
+
+# optional to see the images
+if image_a is not None and image_b is not None:
+    swapper.show_image(image_a, 'Image A with features from B', image_b, 'Image B with features from A')
+
+# go through images in folder
+# Example of how to use the new method in the PatchSwap class
+input_dir = 'path/to/real_face_folder'
+output_dir = 'path/to/fake_face_folder'
+
+# Call the new class method with the input and output directories
+swapper.swap_features_in_directory(input_dir, output_dir)
 ```
 
 Key differences:
 1.  Instead of using dlib, I use MediaPipe for face landmark
 2.  I only swap eyes instead of eyes and eye brows
+
+If you want to follow the paper method, use input folder consisting of the same person for `swap_features_in_directory`.
 
 ## ⚡ Models
 ### 🌟GhostFaceNets
@@ -116,13 +133,13 @@ img = torch.randn(1, 3, 224, 224)
 preds =  model(img) # prediction -> (1,1000)
 ```
 
-SpectFormer utilizes both spectral block and attention block. The amount of spectral block can be speciified using spect_alpha and the remaining block from depth will be attention blocks.
+SpectFormer utilizes both spectral block and attention block. The amount of spectral block can be speciified using `spect_alpha` and the remaining block from `depth` will be attention blocks.
 
 depth - spect_alpha = attention block
 
 12 - 4 = 8
 
-From the code and calculation example above, when spect_alpha are 4 with the depth of 12. The resulting attention block will be 8. If spect_alpha == depth, it will be GFNet while if spect_alpa = 0, it will be ViT.
+From the code and calculation example above, when `spect_alpha` are 4 with the `depth` of 12. The resulting attention block will be 8. If `spect_alpha` == `depth`, it will be GFNet while if spect_alpa = 0, it will be ViT.
 
 
 
@@ -147,12 +164,12 @@ preds = model(img) # prediction -> (1,2)
 I also modified it to use with other models as backbone after concatenating the features from the two blocks.
 You need to specify the number of classes from the backend model instead of LBPCNNFeatureFusion.
 
-You can modify the number of channels after the features are concatenated using adapt and adapt_channels.
+You can modify the number of channels after the features are concatenated using `adapt` and `adapt_channels`.
 
 In order to obtain the image size for backbone model, you need to divide your current image size with 8.
 
 #### MobileNetV3
-We need to use adapt=True so that the number of channels will be 3 instead of 512.
+We need to use `adapt=True` so that the number of channels will be 3 instead of 512.
 ```python
 import torch
 import timm
@@ -192,9 +209,9 @@ preds = model(img) # prediction -> (3,2)
 ```
 
 #### GhostFaceNets
-If you prefer different number of channels instead, you can specify it using adapt_channels.
+If you prefer different number of channels instead, you can specify it using `adapt_channels`.
 
-Note: GhostFaceNets only works with image_size higher than 32.
+Note: GhostFaceNets only works with `image_size` higher than 32.
 ```python
 import torch
 from ellzaf_ml.lcff import LBPCNNFeatureFusion
