@@ -1,8 +1,22 @@
-# Ellzaf ML
-Implementations of ML papers in PyTorch
+<div align="center">
+  <p>
+    <a align="center" href="" target="_blank">
+      <img
+        width="1280"
+        src="./images/ellzaf_ml.png"
+      >
+    </a>
+  </p>
+
+<br>
 
 [![Downloads](https://static.pepy.tech/badge/ellzaf_ml)](https://pepy.tech/project/ellzaf_ml)
 [![Downloads](https://static.pepy.tech/badge/ellzaf_ml/month)](https://pepy.tech/project/ellzaf_ml)
+
+</div>
+
+## 🤔What is ellzaf_ml?
+This package thoughtfully combines machine learning models and data augmentation methods sourced from academic research with practical tools designed to enhance the training of AI models, all seamlessly integrated into PyTorch.
 
 ## 📦Install
 ```bash
@@ -10,7 +24,7 @@ $ pip install ellzaf_ml
 ```
 
 ### ❓Requests
-If you have any papers that are not implemented in PyTorch or not yet implemented in any frameowrks, you can open an issue for this.
+If you have any papers that are not implemented in PyTorch or not yet implemented in any frameworks, you can open an issue for this.
 
 ### 🔬 Experimental
 Any model that can be use in different way from the paper will be inside Experimental tag.
@@ -24,6 +38,9 @@ Any model that can be use in different way from the paper will be inside Experim
 2. [SpectFormer](https://github.com/Hazqeel09/ellzaf_ml#spectformer)
 3. [LBP and CNN Feature Fusion for face anti-spoofing](https://github.com/Hazqeel09/ellzaf_ml#lbp-and-cnn-feature-fusion-for-face-anti-spoofing)
 4. [LDnet with the combination of 2D and 3D](https://github.com/Hazqeel09/ellzaf_ml#ldnet-with-the-combination-of-2d-and-3d)
+
+🛠️ Tool
+1. [PyTorch Early Stopping](https://github.com/Hazqeel09/ellzaf_ml#earlystopping)
 
 ## 🦾Data Augmentation
 ### 💡PatchSwap
@@ -42,7 +59,7 @@ The second picture from the left is when the eyes, nose, and mouth from Image B 
 The fourth picture from the left is when the eyes, nose, and mouth from Image A is applied to Image B.
 
 ```python
-from ellzaf_ml.patchswap import PatchSwap
+from ellzaf_ml.augments import PatchSwap
 
 swapper = PatchSwap()
 image_a, image_b = swapper.swap_features('path/to/face_imageA.jpg', 'path/to/face_imageB.jpg')
@@ -81,7 +98,7 @@ Loss function code from [Insight Face](https://github.com/deepinsight/insightfac
 
 ```python
 import torch
-from ellzaf_ml.ghostfacenetsv2 import ghostfacenetsv2
+from ellzaf_ml.models import ghostfacenetsv2
 
 IMAGE_SIZE = 112
 
@@ -115,7 +132,7 @@ Code is modified version of ViT from [Vit-PyTorch](https://github.com/lucidrains
 
 ```python
 import torch
-from ellzaf_ml.spectformer import SpectFormer
+from ellzaf_ml.models import SpectFormer
 
 model = SpectFormer(
         image_size = 224,
@@ -151,7 +168,7 @@ This model is primarily used for face liveness.
 
 ```python
 import torch
-from ellzaf_ml.lcff import LBPCNNFeatureFusion
+from ellzaf_ml.models import LBPCNNFeatureFusion
 
 model = LBPCNNFeatureFusion(num_classes=2)
 img = torch.rand(1, 3, 224, 224)
@@ -172,7 +189,7 @@ We need to use `adapt=True` so that the number of channels will be 3 instead of 
 ```python
 import torch
 import timm
-from ellzaf_ml.lcff import LBPCNNFeatureFusion
+from ellzaf_ml.models import LBPCNNFeatureFusion
 
 mobilenetv3 = timm.create_model('mobilenetv3_large_100.ra_in1k', pretrained=True)
 mobilenetv3.classifier = torch.nn.Linear(mobilenetv3.classifier.in_features, 2) #specify number of class here
@@ -186,8 +203,7 @@ preds = model(img) # prediction -> (3,2)
 You can choose to use the 512 channels from the concatenated block output or adapt like MobileNetV3.
 ```python
 import torch
-from ellzaf_ml.lcff import LBPCNNFeatureFusion
-from ellzaf_ml.spectformer import SpectFormer
+from ellzaf_ml.models import LBPCNNFeatureFusion, SpectFormer
 
 spect_m = SpectFormer(
     image_size = 28,
@@ -213,8 +229,7 @@ If you prefer different number of channels instead, you can specify it using `ad
 Note: GhostFaceNets only works with `image_size` higher than 32.
 ```python
 import torch
-from ellzaf_ml.lcff import LBPCNNFeatureFusion
-from ellzaf_ml.ghostfacenetsv2 import ghostfacenetsv2
+from ellzaf_ml.models import LBPCNNFeatureFusion, ghostfacenetsv2
 
 gfn_m = ghostfacenetsv2(image_size=33, width=1,  num_classes=3, channels=10, dropout=0., args=None)
 
@@ -232,9 +247,81 @@ Implementation of [A novel Deep CNN based LDnet model with the combination of 2D
 This model primary use is for face liveness.
 ```python
 import torch
-from ellzaf_ml.ldnet import LDnet
+from ellzaf_ml.models import LDnet
 
 model = LDnet(image_size=64)
 img = torch.rand(1, 3, 64, 64)
 preds = model(img) # prediction -> (1,2)
+```
+
+## 🛠️ Data Augmentation
+### ✨ EarlyStopping
+
+Ease early stopping process during model training. This code is from [here](https://github.com/Bjarten/early-stopping-pytorch) and I modified some of it based on the issues from that GitHub.
+
+```python
+import torch
+from torch import nn, optim
+
+# Assuming 'model' has been defined and modified for a 2-class output
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+criterion = nn.CrossEntropyLoss()
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+
+# initialize the early_stopping object
+ early_stopping = EarlyStopping(patience=10, verbose=True)
+
+num_epochs = 100  # Define the number of epochs you want to train for
+
+for epoch in range(num_epochs):
+    model.train()
+    running_loss = 0.0
+    correct_predictions = 0
+
+    for inputs, labels in train_loader:
+        inputs, labels = inputs.to(device), labels.to(device)
+
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+        running_loss += loss.item()
+        _, predictions = torch.max(outputs, 1)
+        correct_predictions += (predictions == labels).sum().item()
+
+    epoch_loss = running_loss / len(train_loader.dataset)
+    epoch_acc = correct_predictions / len(train_loader.dataset)
+
+    model.eval()
+    val_running_loss = 0.0
+    val_correct_predictions = 0
+
+    with torch.no_grad():
+        for inputs, labels in val_loader:
+            inputs, labels = inputs.to(device), labels.to(device)
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+
+            val_running_loss += loss.item()
+            _, predictions = torch.max(outputs, 1)
+            val_correct_predictions += (predictions == labels).sum().item()
+
+    val_epoch_loss = val_running_loss / len(val_loader.dataset)
+    val_epoch_acc = val_correct_predictions / len(val_loader.dataset)
+
+    # early_stopping needs the validation loss to check if it has decresed, 
+    # and if it has, it will make a checkpoint of the current model
+    early_stopping(valid_loss, model)
+    
+    if early_stopping.early_stop:
+        print("Early stopping")
+        break
+
+    print(f'Epoch {epoch+1}/{num_epochs}')
+    print(f'Train Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
+    print(f'Val Loss: {val_epoch_loss:.4f} Acc: {val_epoch_acc:.
 ```
