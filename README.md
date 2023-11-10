@@ -254,8 +254,8 @@ img = torch.rand(1, 3, 64, 64)
 preds = model(img) # prediction -> (1,2)
 ```
 
-## 🛠️ Data Augmentation
-### ✨ EarlyStopping
+## 🛠️ Tools
+### 🔨 EarlyStopping
 
 Ease early stopping process during model training. This code is from [here](https://github.com/Bjarten/early-stopping-pytorch) and I modified some of it based on the issues from that GitHub.
 
