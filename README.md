@@ -323,5 +323,5 @@ for epoch in range(num_epochs):
 
     print(f'Epoch {epoch+1}/{num_epochs}')
     print(f'Train Loss: {epoch_loss:.4f} Acc: {epoch_acc:.4f}')
-    print(f'Val Loss: {val_epoch_loss:.4f} Acc: {val_epoch_acc:.
+    print(f'Val Loss: {val_epoch_loss:.4f} Acc: {val_epoch_acc:.4f})
 ```
