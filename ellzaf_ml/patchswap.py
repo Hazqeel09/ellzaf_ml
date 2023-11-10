@@ -163,7 +163,7 @@ class PatchSwap:
         cv2.waitKey(0)
         cv2.destroyAllWindows()
 
-    def swap_features_in_directory(self, input_dir, output_dir, shuffle=True, shuffle_seed=39, additional_name="zswapped_", diff_counter=True, features_to_swap=None):
+    def swap_features_in_directory(self, input_dir, output_dir, shuffle=True, shuffle_seed=39, additional_name="swapped_", diff_counter=True, features_to_swap=None):
         if features_to_swap is None:
             features_to_swap = ["right_eye", "left_eye", "nose", "lips"]
             
