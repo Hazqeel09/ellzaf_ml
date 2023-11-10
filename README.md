@@ -262,6 +262,7 @@ Ease early stopping process during model training. This code is from [here](http
 ```python
 import torch
 from torch import nn, optim
+from ellzaf_ml.tools import EarlyStopping
 
 # Assuming 'model' has been defined and modified for a 2-class output
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
