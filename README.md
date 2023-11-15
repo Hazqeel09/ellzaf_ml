@@ -105,7 +105,7 @@ img = torch.randn(3, 3, IMAGE_SIZE, IMAGE_SIZE)
 model(img)
 
 #return classification
-model = ghostfacenetsv2(image_size=IMAGE_SIZE, num_classes=3, width=1, dropout=0., args=None)
+model = GhostFaceNetsV2(image_size=IMAGE_SIZE, num_classes=3, width=1, dropout=0.)
 img = torch.randn(3, 3, IMAGE_SIZE, IMAGE_SIZE)
 model(img)
 ```
