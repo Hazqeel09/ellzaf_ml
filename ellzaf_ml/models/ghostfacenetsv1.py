@@ -99,13 +99,13 @@ class GhostModule(nn.Module):
         self.primary_conv = nn.Sequential(
             nn.Conv2d(inp, init_channels, kernel_size, stride, kernel_size//2, bias=False),
             nn.BatchNorm2d(init_channels),
-            nn.PReLU(inplace=True) if prelu else nn.Sequential(),
+            nn.PReLU() if prelu else nn.Sequential(),
         )
 
         self.cheap_operation = nn.Sequential(
             nn.Conv2d(init_channels, new_channels, dw_size, 1, dw_size//2, groups=init_channels, bias=False),
             nn.BatchNorm2d(new_channels),
-            nn.PReLU(inplace=True) if prelu else nn.Sequential(),
+            nn.PReLU() if prelu else nn.Sequential(),
         )
 
     def forward(self, x):
@@ -219,7 +219,7 @@ class GhostFaceNetsV1(nn.Module):
         output_channel = _make_divisible(16 * width, 4)
         self.conv_stem = nn.Conv2d(3, output_channel, 3, 2, 1, bias=False)
         self.bn1 = nn.BatchNorm2d(output_channel)
-        self.act1 = nn.PReLU(inplace=True)
+        self.act1 = nn.PReLU()
         input_channel = output_channel
 
         # building inverted residual blocks
@@ -259,8 +259,6 @@ class GhostFaceNetsV1(nn.Module):
                     fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
                     negative_slope = 0.25  # Default value for PReLU in PyTorch, change it if you use custom value
                     m.weight.data.normal_(0, math.sqrt(2. / (fan_in * (1 + negative_slope ** 2))))
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
             if isinstance(m, nn.BatchNorm2d):
                 m.momentum, m.eps = bn_momentum, bn_epsilon
 

@@ -269,8 +269,6 @@ class GhostFaceNetsV2(nn.Module):
                     fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
                     negative_slope = 0.25  # Default value for PReLU in PyTorch, change it if you use custom value
                     m.weight.data.normal_(0, math.sqrt(2. / (fan_in * (1 + negative_slope ** 2))))
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
             if isinstance(m, nn.BatchNorm2d):
                 m.momentum, m.eps = bn_momentum, bn_epsilon
 
