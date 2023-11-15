@@ -195,10 +195,10 @@ class GhostBottleneckV2(nn.Module):
         return x
 
    
-class GhostFaceNetV2(nn.Module):
+class GhostFaceNetsV2(nn.Module):
     def __init__(self, cfgs, image_size=256, num_classes=1000, width=1.0, channels=3, dropout=0.2, block=GhostBottleneckV2,
                  add_pointwise_conv=False, bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, channels=3, args=None):
-        super(GhostFaceNetV2, self).__init__()
+        super(GhostFaceNetsV2, self).__init__()
         self.cfgs =  [
         # k, t, c, SE, s 
         [[3,  16,  16, 0, 1]],
