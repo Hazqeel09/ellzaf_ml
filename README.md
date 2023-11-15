@@ -15,9 +15,6 @@
 
 </div>
 
-## 🤔What is ellzaf_ml?
-This package thoughtfully combines machine learning models and data augmentation methods sourced from academic research with practical tools designed to enhance the training of AI models, all seamlessly integrated into PyTorch.
-
 ## 📦Install
 ```bash
 $ pip install ellzaf_ml
