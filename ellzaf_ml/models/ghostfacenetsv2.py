@@ -197,9 +197,29 @@ class GhostBottleneckV2(nn.Module):
    
 class GhostFaceNetV2(nn.Module):
     def __init__(self, cfgs, image_size=256, num_classes=1000, width=1.0, channels=3, dropout=0.2, block=GhostBottleneckV2,
-                 add_pointwise_conv=False, args=None):
+                 add_pointwise_conv=False, bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, channels=3, args=None):
         super(GhostFaceNetV2, self).__init__()
-        self.cfgs = cfgs
+        self.cfgs =  [
+        # k, t, c, SE, s 
+        [[3,  16,  16, 0, 1]],
+        [[3,  48,  24, 0, 2]],
+        [[3,  72,  24, 0, 1]],
+        [[5,  72,  40, 0.25, 2]],
+        [[5, 120,  40, 0.25, 1]],
+        [[3, 240,  80, 0, 2]],
+        [[3, 200,  80, 0, 1],
+         [3, 184,  80, 0, 1],
+         [3, 184,  80, 0, 1],
+         [3, 480, 112, 0.25, 1],
+         [3, 672, 112, 0.25, 1]
+        ],
+        [[5, 672, 160, 0.25, 2]],
+        [[5, 960, 160, 0, 1],
+         [5, 960, 160, 0.25, 1],
+         [5, 960, 160, 0, 1],
+         [5, 960, 160, 0.25, 1]
+        ]
+    ]
 
         # building first layer
         output_channel = _make_divisible(16 * width, 4)
@@ -240,6 +260,17 @@ class GhostFaceNetV2(nn.Module):
         self.pointwise_conv = nn.Sequential(*pointwise_conv)
         self.classifier = ModifiedGDC(image_size, output_channel, num_classes, dropout)
 
+        # Initialize weights
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
+                negative_slope = 0.25  # Default value for PReLU in PyTorch, change it if you use custom value
+                m.weight.data.normal_(0, math.sqrt(2. / (fan_in * (1 + negative_slope ** 2))))
+            if m.bias is not None:
+                init.zeros_(m.bias)
+            if isinstance(module, nn.BatchNorm2d):
+                module.momentum, module.eps = bn_momentum, bn_epsilon
+
     def forward(self, x):
         x = self.conv_stem(x)
         x = self.bn1(x)
@@ -248,39 +279,3 @@ class GhostFaceNetV2(nn.Module):
         x = self.pointwise_conv(x)
         x = self.classifier(x)
         return x
-
-def ghostfacenetsv2(bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, channels=3, **kwargs):
-    cfgs = [   
-        # k, t, c, SE, s 
-        [[3,  16,  16, 0, 1]],
-        [[3,  48,  24, 0, 2]],
-        [[3,  72,  24, 0, 1]],
-        [[5,  72,  40, 0.25, 2]],
-        [[5, 120,  40, 0.25, 1]],
-        [[3, 240,  80, 0, 2]],
-        [[3, 200,  80, 0, 1],
-         [3, 184,  80, 0, 1],
-         [3, 184,  80, 0, 1],
-         [3, 480, 112, 0.25, 1],
-         [3, 672, 112, 0.25, 1]
-        ],
-        [[5, 672, 160, 0.25, 2]],
-        [[5, 960, 160, 0, 1],
-         [5, 960, 160, 0.25, 1],
-         [5, 960, 160, 0, 1],
-         [5, 960, 160, 0.25, 1]
-        ]
-    ]
-
-    GhostFaceNet = GhostFaceNetV2(cfgs, image_size=kwargs['image_size'],
-                                  num_classes=num_classes,
-                                  channels=channels,
-                                  width=kwargs['width'],
-                                  dropout=kwargs['dropout'],
-                                  args=kwargs['args'])
-
-    for module in GhostFaceNet.modules():
-        if isinstance(module, nn.BatchNorm2d):
-            module.momentum, module.eps = bn_momentum, bn_epsilon
-
-    return GhostFaceNet
