@@ -98,12 +98,12 @@ Loss function code from [Insight Face](https://github.com/deepinsight/insightfac
 
 ```python
 import torch
-from ellzaf_ml.models import ghostfacenetsv2
+from ellzaf_ml.models import GhostFaceNetsV2
 
 IMAGE_SIZE = 112
 
 #return embedding
-model = ghostfacenetsv2(image_size=IMAGE_SIZE, width=1, dropout=0., args=None)
+model = GhostFaceNetsV2(image_size=IMAGE_SIZE, width=1, dropout=0.)
 img = torch.randn(3, 3, IMAGE_SIZE, IMAGE_SIZE)
 model(img)
 
