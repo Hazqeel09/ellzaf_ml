@@ -29,7 +29,7 @@ class LBPLayer(nn.Module):
         return lbp_image.float()  # Convert to float for subsequent layers
 
 class LBPCNNFeatureFusion(nn.Module):
-    def __init__(self, num_classes=2, adapt=False, adapt_channels=3, backbone=None, backbone_model=None):
+    def __init__(self, num_classes=2, adapt=False, adapt_channels=3, do_conv=True, backbone=None, backbone_model=None):
         super(LBPCNNFeatureFusion, self).__init__()
 
         assert not (backbone is None) ^ (backbone_model is None), 'You need to specify both backbone name and backbone model if you specify one of them'
@@ -39,31 +39,37 @@ class LBPCNNFeatureFusion(nn.Module):
         self.lbp_layer = LBPLayer()
 
         self.adapt = adapt
-        self.adapt_channels = nn.Conv2d(512, adapt_channels, kernel_size=1)
+        if do_conv:
+            self.adapt_channels = nn.Conv2d(512, adapt_channels, kernel_size=1)
+            self.block1 = nn.Sequential(
+                nn.Conv2d(3, 64, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2),
+                nn.Conv2d(64, 128, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2),
+                nn.Conv2d(128, 256, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2),
+            )
+    
+            self.block2 = nn.Sequential(
+                nn.Conv2d(1, 64, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2),
+                nn.Conv2d(64, 128, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2),
+                nn.Conv2d(128, 256, kernel_size=3, padding=1),
+                nn.ReLU(),
+                nn.MaxPool2d(2, 2),
+            )
+        else:
+            self.adapt_channels = nn.Conv2d(4, adapt_channels, kernel_size=1)
+            self.block1 = nn.Identity()
+            self.block2 = nn.Identity()
         
-        self.block1 = nn.Sequential(
-            nn.Conv2d(3, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-        )
-
-        self.block2 = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(64, 128, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-            nn.Conv2d(128, 256, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2),
-        )
+        
 
         if self.backbone == None:
             self.fusion_and_classify = nn.Sequential(
