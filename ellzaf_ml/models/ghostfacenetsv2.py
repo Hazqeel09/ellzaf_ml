@@ -195,31 +195,34 @@ class GhostBottleneckV2(nn.Module):
 
    
 class GhostFaceNetsV2(nn.Module):
-    def __init__(self, cfgs, image_size=256, num_classes=1000, width=1.0, channels=3, dropout=0.2, block=GhostBottleneckV2,
+    def __init__(self, cfgs=None, image_size=256, num_classes=1000, width=1.0, channels=3, dropout=0.2, block=GhostBottleneckV2,
                  add_pointwise_conv=False, bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, channels=3,
                  init_kaiming=True, args=None):
         super(GhostFaceNetsV2, self).__init__()
-        self.cfgs =  [
-        # k, t, c, SE, s 
-        [[3,  16,  16, 0, 1]],
-        [[3,  48,  24, 0, 2]],
-        [[3,  72,  24, 0, 1]],
-        [[5,  72,  40, 0.25, 2]],
-        [[5, 120,  40, 0.25, 1]],
-        [[3, 240,  80, 0, 2]],
-        [[3, 200,  80, 0, 1],
-         [3, 184,  80, 0, 1],
-         [3, 184,  80, 0, 1],
-         [3, 480, 112, 0.25, 1],
-         [3, 672, 112, 0.25, 1]
-        ],
-        [[5, 672, 160, 0.25, 2]],
-        [[5, 960, 160, 0, 1],
-         [5, 960, 160, 0.25, 1],
-         [5, 960, 160, 0, 1],
-         [5, 960, 160, 0.25, 1]
-        ]
-    ]
+        if cfgs = None:
+            self.cfgs =  [
+                # k, t, c, SE, s 
+                [[3,  16,  16, 0, 1]],
+                [[3,  48,  24, 0, 2]],
+                [[3,  72,  24, 0, 1]],
+                [[5,  72,  40, 0.25, 2]],
+                [[5, 120,  40, 0.25, 1]],
+                [[3, 240,  80, 0, 2]],
+                [[3, 200,  80, 0, 1],
+                 [3, 184,  80, 0, 1],
+                 [3, 184,  80, 0, 1],
+                 [3, 480, 112, 0.25, 1],
+                 [3, 672, 112, 0.25, 1]
+                ],
+                [[5, 672, 160, 0.25, 2]],
+                [[5, 960, 160, 0, 1],
+                 [5, 960, 160, 0.25, 1],
+                 [5, 960, 160, 0, 1],
+                 [5, 960, 160, 0.25, 1]
+                ]
+            ]
+        else:
+            self.cfgs = cfgs
 
         # building first layer
         output_channel = _make_divisible(16 * width, 4)
