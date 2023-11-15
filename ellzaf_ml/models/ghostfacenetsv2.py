@@ -65,7 +65,6 @@ class ModifiedGDC(nn.Module):
         self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=1,groups=in_chs, bias=False)
         self.bn1 = nn.BatchNorm2d(in_chs)
         self.conv = nn.Conv2d(in_chs, emb, kernel_size=1, bias=False)
-        nn.init.xavier_normal_(self.conv.weight.data) #initialize weight
 
         if image_size % 32 == 0:
             flattened_features = emb*((image_size//32)**2)
@@ -197,7 +196,8 @@ class GhostBottleneckV2(nn.Module):
    
 class GhostFaceNetsV2(nn.Module):
     def __init__(self, cfgs, image_size=256, num_classes=1000, width=1.0, channels=3, dropout=0.2, block=GhostBottleneckV2,
-                 add_pointwise_conv=False, bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, channels=3, args=None):
+                 add_pointwise_conv=False, bn_momentum=0.9, bn_epsilon=1e-5, num_classes=None, channels=3,
+                 init_kaiming=True, args=None):
         super(GhostFaceNetsV2, self).__init__()
         self.cfgs =  [
         # k, t, c, SE, s 
@@ -262,12 +262,13 @@ class GhostFaceNetsV2(nn.Module):
 
         # Initialize weights
         for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
-                fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
-                negative_slope = 0.25  # Default value for PReLU in PyTorch, change it if you use custom value
-                m.weight.data.normal_(0, math.sqrt(2. / (fan_in * (1 + negative_slope ** 2))))
-            if m.bias is not None:
-                init.zeros_(m.bias)
+            if init_kaiming:
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+                    fan_in, _ = nn.init._calculate_fan_in_and_fan_out(m.weight)
+                    negative_slope = 0.25  # Default value for PReLU in PyTorch, change it if you use custom value
+                    m.weight.data.normal_(0, math.sqrt(2. / (fan_in * (1 + negative_slope ** 2))))
+                if m.bias is not None:
+                    init.zeros_(m.bias)
             if isinstance(module, nn.BatchNorm2d):
                 module.momentum, module.eps = bn_momentum, bn_epsilon
 
