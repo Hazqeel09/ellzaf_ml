@@ -34,7 +34,7 @@ class SqueezeExcite(nn.Module):
         reduced_chs = _make_divisible((reduced_base_chs or in_chs) * se_ratio, divisor)
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.conv_reduce = nn.Conv2d(in_chs, reduced_chs, 1, bias=True)
-        self.act1 = act_layer(inplace=True)
+        self.act1 = act_layer()
         self.conv_expand = nn.Conv2d(reduced_chs, in_chs, 1, bias=True)
 
     def forward(self, x):
@@ -52,7 +52,7 @@ class ConvBnAct(nn.Module):
         super(ConvBnAct, self).__init__()
         self.conv = nn.Conv2d(in_chs, out_chs, kernel_size, stride, kernel_size//2, bias=False)
         self.bn1 = nn.BatchNorm2d(out_chs)
-        self.act1 = act_layer(inplace=True)
+        self.act1 = act_layer()
 
     def forward(self, x):
         x = self.conv(x)
