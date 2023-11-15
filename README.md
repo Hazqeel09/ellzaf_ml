@@ -86,12 +86,32 @@ If you want to follow the paper method, use input folder consisting of the same 
 
 ## ⚡ Models
 ### 🌟GhostFaceNets
+<img src="./images/ghostfacenetsv1.png"></img>
+PyTorch version of [GhostFaceNetsV1](https://github.com/HamadYA/GhostFaceNets/tree/main).
+
+GhostNet code from [Huawei Noah's Ark Lab](https://github.com/huawei-noah/Efficient-AI-Backbones/tree/master).
+
+```python
+import torch
+from ellzaf_ml.models import GhostFaceNetsV1
+
+IMAGE_SIZE = 112
+
+#return embedding
+model = GhostFaceNetsV1(image_size=IMAGE_SIZE, width=1, dropout=0.)
+img = torch.randn(3, 3, IMAGE_SIZE, IMAGE_SIZE)
+model(img)
+
+#return classification
+model = GhostFaceNetsV1(image_size=IMAGE_SIZE, num_classes=3, width=1, dropout=0.)
+img = torch.randn(3, 3, IMAGE_SIZE, IMAGE_SIZE)
+model(img)
+```
+
 <img src="./images/ghostfacenetsv2.png"></img>
-PyTorch version of [GhostFaceNets](https://github.com/HamadYA/GhostFaceNets/tree/main).
+PyTorch version of [GhostFaceNetsV2](https://github.com/HamadYA/GhostFaceNets/tree/main).
 
 GhostNetV2 code from [Huawei Noah's Ark Lab](https://github.com/huawei-noah/Efficient-AI-Backbones/tree/master).
-
-Loss function code from [Insight Face](https://github.com/deepinsight/insightface/blob/master/recognition/arcface_torch/losses.py).
 
 ```python
 import torch
@@ -226,12 +246,24 @@ If you prefer different number of channels instead, you can specify it using `ad
 Note: GhostFaceNets only works with `image_size` higher than 32.
 ```python
 import torch
-from ellzaf_ml.models import LBPCNNFeatureFusion, ghostfacenetsv2
+from ellzaf_ml.models import LBPCNNFeatureFusion, GhostFaceNetsV2
 
-gfn_m = ghostfacenetsv2(image_size=33, width=1,  num_classes=3, channels=10, dropout=0., args=None)
+gfn_m = GhostFaceNetsV2(image_size=33, width=1,  num_classes=3, channels=10, dropout=0.)
 
 model = LBPCNNFeatureFusion(backbone="ghostfacenets", adapt=True, adapt_channels=10, backbone_model=gfn_m)
 img = torch.rand(3, 3, 264, 264)
+preds = model(img) # prediction -> (3,2)
+```
+
+I also modify further where you can choose to perform convolutional or not. Basically with this method, you will only get the combined RGB and LBP.
+```python
+import torch
+from ellzaf_ml.models import LBPCNNFeatureFusion, GhostFaceNetsV2
+
+gfn_m = GhostFaceNetsV2(image_size=224, width=1,  num_classes=3, channels=4, dropout=0.)
+
+model = LBPCNNFeatureFusion(backbone="ghostfacenets", do_conv=False, backbone_model=gfn_m)
+img = torch.rand(3, 3, 224, 224)
 preds = model(img) # prediction -> (3,2)
 ```
 </details>
