@@ -35,6 +35,7 @@ Any model that can be use in different way from the paper will be inside Experim
 2. [SpectFormer](https://github.com/Hazqeel09/ellzaf_ml#spectformer)
 3. [LBP and CNN Feature Fusion for face anti-spoofing](https://github.com/Hazqeel09/ellzaf_ml#lbp-and-cnn-feature-fusion-for-face-anti-spoofing)
 4. [LDnet with the combination of 2D and 3D](https://github.com/Hazqeel09/ellzaf_ml#ldnet-with-the-combination-of-2d-and-3d)
+5. [TinyViT with S-Adapter](https://github.com/Hazqeel09/ellzaf_ml#tinyvit-with-s-adapter)
 
 🛠️ Tool
 1. [PyTorch Early Stopping](https://github.com/Hazqeel09/ellzaf_ml#-earlystopping)
@@ -281,6 +282,28 @@ from ellzaf_ml.models import LDnet
 model = LDnet(image_size=64)
 img = torch.rand(1, 3, 64, 64)
 preds = model(img) # prediction -> (1,2)
+```
+
+### 🌟TinyViT with S-Adapter
+<img src="./images/sadapter.png"></img>
+
+Implementation of [S-Adapter: Generalizing Vision Transformer for Face Anti-Spoofing with Statistical Tokens](https://arxiv.org/abs/2309.04038).
+
+Code is modified version to use TinyViT instead of ViT.
+
+```python
+import torch
+from ellzaf_ml.models import TinyViTSAdapter
+
+model = TinyViTSAdapter(
+    patch_size=16, 
+    embed_dim=192, 
+    depth=12, 
+    num_heads=3, 
+)
+
+img = torch.randn(1, 3, 224, 224)
+preds =  model(img) # prediction -> (1,1000)
 ```
 
 ## 🛠️ Tools
