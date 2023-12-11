@@ -302,7 +302,7 @@ model = TinyViTSAdapter(
     num_heads=3, 
 )
 
-img = torch.randn(1, 3, 224, 224)
+img = torch.randn(1000, 3, 224, 224)
 preds =  model(img) # prediction -> (1,1000)
 ```
 
