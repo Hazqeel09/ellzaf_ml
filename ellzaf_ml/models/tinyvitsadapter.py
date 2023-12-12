@@ -16,12 +16,13 @@ class CDC(nn.Module):
         super(CDC, self).__init__() 
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=(1, 5), stride=stride, padding=padding, dilation=dilation, groups=groups, bias=bias)
         self.theta = theta
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def forward(self, x):
-        
-        
+
         [C_out,C_in,H_k,W_k] = self.conv.weight.shape
-        tensor_zeros = torch.FloatTensor(C_out, C_in, 1).fill_(0)
+        tensor_zeros = torch.zeros(C_out, C_in, 1, device=self.conv.weight.device)
+            
         conv_weight = torch.cat((tensor_zeros, self.conv.weight[:,:,:,0], tensor_zeros, self.conv.weight[:,:,:,1], self.conv.weight[:,:,:,2], self.conv.weight[:,:,:,3], tensor_zeros, self.conv.weight[:,:,:,4], tensor_zeros), 2)
         conv_weight = conv_weight.contiguous().view(C_out, C_in, 3, 3)
         
@@ -100,19 +101,18 @@ class TokenHistogram(nn.Module):
 
 
 class SAdapter(nn.Module):
-    def __init__(self, num_tokens, dim, expansion_ratio=2):
+    def __init__(self, num_tokens, dim):
         super(SAdapter, self).__init__()
         self.dim = dim
+        self.wh = int((math.sqrt(num_tokens)))
         self.num_tokens = num_tokens
-        self.expansion_ratio = expansion_ratio
-        self.expanded_features = dim * expansion_ratio
 
         # Assuming the adapter is placed after the multi-head self-attention (MHSA) and
         # before the MLP within each transformer block.
-        self.linear1 = nn.Linear(192, 8)
+        self.linear1 = nn.Linear(self.dim, 8)
         self.conv1 = nn.Conv2d(8, 8, kernel_size=1)
         self.cdc = CDC(8, 8, kernel_size=1, stride=1, padding=1, dilation=1, groups=1, bias=False, theta=0.7)
-        self.histogram = TokenHistogram(8, 14, 14, 196)
+        self.histogram = TokenHistogram(8, self.wh, self.wh, self.num_tokens)
 
     def forward(self, x):
         # Remove the class token to get shape [batch_size, 196, dim]
