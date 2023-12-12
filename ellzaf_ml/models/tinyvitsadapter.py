@@ -176,14 +176,14 @@ class TinyViTSAdapter(VisionTransformer):
 
         for i, blk in enumerate(self.blocks):
             # Apply the S-Adapter after the first normalization and MHSA
-            x_residual_mhsa = blk.norm1(x)  # Normalization before MHSA
-            x_mhsa = blk.attn(x_residual_mhsa) + x_residual_mhsa  # MHSA with residual connection
-            x_s_adapter_mhsa = self.s_adapters[i](x_mhsa) + x_mhsa  # S-Adapter after MHSA
+            x_normed = blk.norm1(x)  # Normalization before MHSA
+            x_mhsa = blk.attn(x_normed)  # MHSA with residual connection
+            x = x_mhsa + self.s_adapters[i](x_normed) + x  # S-Adapter after MHSA
 
             # Apply the S-Adapter after the MLP and before its normalization
-            x_residual_mlp = blk.norm2(x_s_adapter_mhsa)  # Normalization before MLP
-            x_mlp = blk.mlp(x_residual_mlp) + x_residual_mlp  # MLP with residual connection
-            x = self.s_adapters[i](x_mlp) + x_mlp  # S-Adapter after MLP
+            x_normed = blk.norm2(x)  # Normalization before MLP
+            x_mlp = blk.mlp(x_normed)  # MLP with residual connection
+            x = x_mlp + self.s_adapters[i](x) + x  # S-Adapter after MLP
 
         return x[:, 0]
 
