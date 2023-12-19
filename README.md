@@ -293,17 +293,16 @@ Code is modified version to use TinyViT instead of ViT.
 
 ```python
 import torch
-from ellzaf_ml.models import TinyViTSAdapter
+from ellzaf_ml.models import ViTSAdapter
 
-model = TinyViTSAdapter(
-    patch_size=16, 
-    embed_dim=192, 
-    depth=12, 
-    num_heads=3, 
-)
+model = ViTSAdapter()
 
-img = torch.randn(1000, 3, 224, 224)
-preds =  model(img) # prediction -> (1,1000)
+img = torch.randn(3, 3, 224, 224)
+preds =  model(img) # prediction -> (1,3)
+```
+The default model is `base`. You can specify it to use `tiny`,`small` or `large`.
+```python
+model = ViTSAdapter(model_size="tiny")
 ```
 
 ## 🛠️ Tools
