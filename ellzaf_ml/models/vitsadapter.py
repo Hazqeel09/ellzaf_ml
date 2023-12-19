@@ -138,15 +138,41 @@ class SAdapter(nn.Module):
         return x
 
 
-class TinyViTSAdapter(VisionTransformer):
-    def __init__(self, *args, **kwargs):
+class ViTSAdapter(VisionTransformer):
+    def __init__(self, model_size="base", *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        self.configs = {
+            "tiny":{
+                embed_dim=192,
+                num_heads=3
+            },
+            "small":{
+                embed_dim=384,
+                num_heads=6
+            },
+            "base":{
+                embed_dim=768,
+                num_heads=12
+            },
+            "large":{
+                embed_dim=1024,
+                num_heads=16
+            }
+        }
+
+        # Validate and apply the model size configuration
+        if model_size not in self.configs:
+            raise ValueError(f"Invalid model size '{model_size}'. Must be one of {list(self.configs.keys())}.")
+        self.model_size = model_size
+        self.embed_dim = self.configs[model_size]['embed_dim']
+        self.num_heads = self.configs[model_size]['num_heads']
         
         # Initialize the S-Adapter for each block
         self.s_adapters = nn.ModuleList([SAdapter(num_tokens=196, dim=self.embed_dim) for _ in range(len(self.blocks))])
 
         # Load the pre-trained ViT model weights
-        self._load_pretrained_weights()
+        self._load_pretrained_weights(self.model_size)
 
         # Freeze the MHSA, MLP, and Patch Embedding layers
         for param in self.patch_embed.parameters():
@@ -187,9 +213,21 @@ class TinyViTSAdapter(VisionTransformer):
 
         return x[:, 0]
 
-    def _load_pretrained_weights(self):
+    def _load_pretrained_weights(self, model_size="base"):
         # Load the pre-trained ViT Tiny model
-        model = timm.create_model('vit_tiny_patch16_224', pretrained=True)
+        if model_size not in ["tiny", "small", "base", "large"]:
+
+        if model_size == "tiny":
+            model = timm.create_model('vit_tiny_patch16_224', pretrained=True)
+
+        if model_size == "small":
+            model = timm.create_model('vit_small_patch16_224', pretrained=True)
+
+        if model_size == "base":
+            model = timm.create_model('vit_base_patch16_224', pretrained=True)
+
+        if model_size == "large":
+            model = timm.create_model('vit_large_patch16_224', pretrained=True)
 
         # Extract the state_dict from the pre-trained model, excluding the 'head'
         pretrained_state_dict = {k: v for k, v in model.state_dict().items() if not k.startswith('head')}
