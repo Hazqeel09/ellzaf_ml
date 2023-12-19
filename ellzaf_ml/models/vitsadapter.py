@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 import torch.nn as nn
 import timm
-from timm.models.vision_transformer import VisionTransformer, Block
+from timm.models.vision_transformer import VisionTransformer
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,7 +40,7 @@ class CDC(nn.Module):
             return out_normal - self.theta * out_diff
         
 class TokenHistogram(nn.Module):
-    def __init__(self, C, H, W, NP):
+    def __init__(self, C, H, W, NP, dim):
         super(TokenHistogram, self).__init__()
         # Dimensions
         self.C = C
@@ -53,7 +53,7 @@ class TokenHistogram(nn.Module):
         self.WConv2 = nn.Conv2d(C, C, 1, bias=False)
 
         # Linear layer for final projection
-        self.linear = nn.Linear(8, 192)
+        self.linear = nn.Linear(8, dim)
 
         # Initialize weights and biases
         nn.init.ones_(self.WConv1.weight)
@@ -112,7 +112,7 @@ class SAdapter(nn.Module):
         self.linear1 = nn.Linear(self.dim, 8)
         self.conv1 = nn.Conv2d(8, 8, kernel_size=1)
         self.cdc = CDC(8, 8, kernel_size=1, stride=1, padding=1, dilation=1, groups=1, bias=False, theta=0.7)
-        self.histogram = TokenHistogram(8, self.wh, self.wh, self.num_tokens)
+        self.histogram = TokenHistogram(8, self.wh, self.wh, self.num_tokens, dim)
 
     def forward(self, x):
         # Remove the class token to get shape [batch_size, 196, dim]
@@ -142,37 +142,20 @@ class ViTSAdapter(VisionTransformer):
     def __init__(self, model_size="base", *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.configs = {
-            "tiny":{
-                embed_dim=192,
-                num_heads=3
-            },
-            "small":{
-                embed_dim=384,
-                num_heads=6
-            },
-            "base":{
-                embed_dim=768,
-                num_heads=12
-            },
-            "large":{
-                embed_dim=1024,
-                num_heads=16
-            }
-        }
-
-        # Validate and apply the model size configuration
-        if model_size not in self.configs:
-            raise ValueError(f"Invalid model size '{model_size}'. Must be one of {list(self.configs.keys())}.")
-        self.model_size = model_size
-        self.embed_dim = self.configs[model_size]['embed_dim']
-        self.num_heads = self.configs[model_size]['num_heads']
+        # Initialize the base VisionTransformer model from timm
+        if model_size == "tiny":
+            self.base_model = timm.create_model('vit_tiny_patch16_224', pretrained=True)
+        elif model_size == "small":
+            self.base_model = timm.create_model('vit_small_patch16_224', pretrained=True)
+        elif model_size == "base":
+            self.base_model = timm.create_model('vit_base_patch16_224', pretrained=True)
+        elif model_size == "large":
+            self.base_model = timm.create_model('vit_large_patch16_224', pretrained=True)
+        else:
+            raise ValueError(f"Invalid model size '{model_size}'. Must be one of ['tiny', 'small', 'base', 'large'].")
         
         # Initialize the S-Adapter for each block
         self.s_adapters = nn.ModuleList([SAdapter(num_tokens=196, dim=self.embed_dim) for _ in range(len(self.blocks))])
-
-        # Load the pre-trained ViT model weights
-        self._load_pretrained_weights(self.model_size)
 
         # Freeze the MHSA, MLP, and Patch Embedding layers
         for param in self.patch_embed.parameters():
@@ -212,28 +195,6 @@ class ViTSAdapter(VisionTransformer):
             x = x_mlp + self.s_adapters[i](x) + x  # S-Adapter after MLP
 
         return x[:, 0]
-
-    def _load_pretrained_weights(self, model_size="base"):
-        # Load the pre-trained ViT Tiny model
-        if model_size not in ["tiny", "small", "base", "large"]:
-
-        if model_size == "tiny":
-            model = timm.create_model('vit_tiny_patch16_224', pretrained=True)
-
-        if model_size == "small":
-            model = timm.create_model('vit_small_patch16_224', pretrained=True)
-
-        if model_size == "base":
-            model = timm.create_model('vit_base_patch16_224', pretrained=True)
-
-        if model_size == "large":
-            model = timm.create_model('vit_large_patch16_224', pretrained=True)
-
-        # Extract the state_dict from the pre-trained model, excluding the 'head'
-        pretrained_state_dict = {k: v for k, v in model.state_dict().items() if not k.startswith('head')}
-
-        # Update the current model's state_dict with the pre-trained weights
-        _, _ = self.load_state_dict(pretrained_state_dict, strict=False)
 
     def forward(self, x):
         x = self.forward_features(x)
