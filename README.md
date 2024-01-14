@@ -35,7 +35,7 @@ Any model that can be use in different way from the paper will be inside Experim
 2. [SpectFormer](https://github.com/Hazqeel09/ellzaf_ml#spectformer)
 3. [LBP and CNN Feature Fusion for face anti-spoofing](https://github.com/Hazqeel09/ellzaf_ml#lbp-and-cnn-feature-fusion-for-face-anti-spoofing)
 4. [LDnet with the combination of 2D and 3D](https://github.com/Hazqeel09/ellzaf_ml#ldnet-with-the-combination-of-2d-and-3d)
-5. [TinyViT with S-Adapter](https://github.com/Hazqeel09/ellzaf_ml#tinyvit-with-s-adapter)
+5. [SimMIM](https://github.com/Hazqeel09/ellzaf_ml#simmim)
 
 🛠️ Tool
 1. [PyTorch Early Stopping](https://github.com/Hazqeel09/ellzaf_ml#-earlystopping)
@@ -175,6 +175,35 @@ depth - spect_alpha = attention block
 
 From the code and calculation example above, when `spect_alpha` are 4 with the `depth` of 12. The resulting attention block will be 8. If `spect_alpha` == `depth`, it will be GFNet while if spect_alpa = 0, it will be ViT.
 
+<details>
+    <summary> 🔬 Experimental [Click Here] </summary>
+    
+#### ViTSpectral
+This is different ViT architecture from [SimMIM Repo](https://github.com/microsoft/SimMIM/blob/main/models/vision_transformer.py).  I changed the architecture a bit by adding spectral gating network to each attention block.
+
+```python
+from ellzaf_ml.models import ViTSpectral
+small_vitspectral = ViTSpectral(
+    img_size=224,
+    patch_size=16,
+    in_chans=3,
+    num_classes=2,
+    embed_dim=368, #base is 768
+    depth=12,
+    num_heads=6, #12
+    mlp_ratio=4,
+    qkv_bias=True,
+    drop_rate=0.,
+    drop_path_rate=0.,
+    norm_layer=partial(nn.LayerNorm, eps=1e-6),
+    init_values=0.1,
+    use_abs_pos_emb=False,
+    use_rel_pos_bias=True,
+    use_shared_rel_pos_bias=False,
+    use_mean_pooling=True)
+```
+</details>
+
 
 
 ### 🌟LBP and CNN Feature Fusion for face anti-spoofing
@@ -284,25 +313,33 @@ img = torch.rand(1, 3, 64, 64)
 preds = model(img) # prediction -> (1,2)
 ```
 
-### 🌟TinyViT with S-Adapter
-<img src="./images/sadapter.png"></img>
+### 🌟SimMIM
 
-Implementation of [S-Adapter: Generalizing Vision Transformer for Face Anti-Spoofing with Statistical Tokens](https://arxiv.org/abs/2309.04038).
-
-Code is modified version to use TinyViT instead of ViT.
+Modified SimMIM code from the original [repo](https://github.com/microsoft/SimMIM/tree/main) but the archtecture is still the same.
 
 ```python
-import torch
-from ellzaf_ml.models import ViTSAdapter
+from ellzaf_ml.models import ViTSpectralForSimMIM, SimMIM
+encoder = ViTSpectralForSimMIM(
+    img_size=224,
+    patch_size=16,
+    in_chans=3,
+    num_classes=0,
+    embed_dim=384,
+    depth=12,
+    num_heads=6,
+    mlp_ratio=4,
+    qkv_bias=True,
+    drop_rate=0.,
+    drop_path_rate=0.1,
+    norm_layer=partial(nn.LayerNorm, eps=1e-6),
+    init_values=0.1,
+    use_abs_pos_emb=False,
+    use_rel_pos_bias=False,
+    use_shared_rel_pos_bias=True,
+    use_mean_pooling=False)
+encoder_stride = 16
 
-model = ViTSAdapter()
-
-img = torch.randn(3, 3, 224, 224)
-preds =  model(img) # prediction -> (1,3)
-```
-The default model is `base`. You can specify it to use `tiny`,`small` or `large`.
-```python
-model = ViTSAdapter(model_size="tiny")
+simmim = SimMIM(encoder=encoder, encoder_stride=encoder_stride)
 ```
 
 ## 🛠️ Tools
