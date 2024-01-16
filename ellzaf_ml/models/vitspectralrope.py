@@ -1,11 +1,3 @@
-# --------------------------------------------------------
-# SimMIM
-# Copyright (c) 2021 Microsoft
-# Licensed under The MIT License [see LICENSE for details]
-# Based on BEIT code bases (https://github.com/microsoft/unilm/tree/master/beit)
-# Written by Yutong Lin, Zhenda Xie
-# --------------------------------------------------------
-
 import math
 from functools import partial
 
