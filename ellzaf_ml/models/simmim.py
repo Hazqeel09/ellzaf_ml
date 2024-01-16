@@ -76,11 +76,8 @@ class ViTSpectralRoPEForSimMIM(ViTSpectralRoPE):
         w = mask.flatten(1).unsqueeze(-1).type_as(mask_token)
         x = x * (1 - w) + mask_token * w
 
-        cls_tokens = self.cls_token.expand(B, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
-        x = torch.cat((cls_tokens, x), dim=1)
-
         if self.pos_embed is not None:
-            x = x + self.pos_embed
+            x += self.pos_embed(x)
         x = self.pos_drop(x)
 
         rel_pos_bias = self.rel_pos_bias() if self.rel_pos_bias is not None else None
@@ -88,7 +85,6 @@ class ViTSpectralRoPEForSimMIM(ViTSpectralRoPE):
             x = blk(x, rel_pos_bias=rel_pos_bias)
         x = self.norm(x)
 
-        x = x[:, 1:]
         B, L, C = x.shape
         H = W = int(L ** 0.5)
         x = x.permute(0, 2, 1).reshape(B, C, H, W)
