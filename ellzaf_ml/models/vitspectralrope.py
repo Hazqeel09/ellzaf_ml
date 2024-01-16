@@ -60,6 +60,26 @@ class SpectralGatingNetwork(nn.Module):
 
         return x
 
+def apply_rotary_pos_emb(q, k, sinu_pos):
+    sinu_pos = rearrange(sinu_pos, '() n (j d) -> n j d', j = 2)
+    sin, cos = sinu_pos.unbind(dim = -2)
+
+    sin, cos = map(lambda t: repeat(t, 'b n -> b (n j)', j = 2), (sin, cos))
+    q, k = map(lambda t: (t * cos) + (rotate_every_two(t) * sin), (q, k))
+    return q, k
+
+class FixedPositionalEmbedding(nn.Module):
+    def __init__(self, dim, max_seq_len):
+        super().__init__()
+        inv_freq = 1. / (10000 ** (torch.arange(0, dim, 2).float() / dim))
+        position = torch.arange(0, max_seq_len, dtype=torch.float)
+        sinusoid_inp = torch.einsum("i,j->ij", position, inv_freq)
+        emb = torch.cat((sinusoid_inp.sin(), sinusoid_inp.cos()), dim=-1)
+        self.register_buffer('emb', emb)
+
+    def forward(self, x):
+        return self.emb[None, :x.shape[1], :].to(x)
+
 
 class Attention(nn.Module):
     def __init__(
@@ -115,14 +135,17 @@ class Attention(nn.Module):
         self.proj = nn.Linear(all_head_dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
 
-    def forward(self, x, rel_pos_bias=None):
+    def forward(self, x, rel_pos_bias=None, rope=None):
         B, N, C = x.shape
         qkv_bias = None
         if self.q_bias is not None:
             qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
         qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
         qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]   # make torchscript happy (cannot use tensor as tuple)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+
+        if rope is not None:
+            q, k = apply_rotary_pos_emb(q, k, rope)
 
         q = q * self.scale
         attn = (q @ k.transpose(-2, -1))
@@ -174,18 +197,18 @@ class Block(nn.Module):
         else:
             self.gamma_1, self.gamma_2, self.gamma_3 = None, None, None
 
-    def forward(self, x, rel_pos_bias=None):
+    def forward(self, x, rel_pos_bias=None, rope=None):
         if self.gamma_1 is None:
             if self.add_spect:
-                x = x + self.drop_path(self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias)) + self.drop_path(self.spect(self.normspect(x)))
+                x = x + self.drop_path(self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias, rope=rope)) + self.drop_path(self.spect(self.normspect(x)))
             else:
-                x = x + self.drop_path(self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias))
+                x = x + self.drop_path(self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias, rope=rope))
             x = x + self.drop_path(self.mlp(self.norm2(x)))
         else:
             if self.add_spect:
-                x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias)) + self.drop_path(self.gamma_2 * self.drop_path(self.spect(self.normspect(x))))
+                x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias, rope=rope)) + self.drop_path(self.gamma_2 * self.drop_path(self.spect(self.normspect(x))))
             else:
-                x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias))
+                x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias, rope=rope))
             x = x + self.drop_path(self.gamma_3 * self.mlp(self.norm2(x)))
             x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
@@ -214,7 +237,6 @@ class PatchEmbed(nn.Module):
 
 
 class RelativePositionBias(nn.Module):
-
     def __init__(self, window_size, num_heads):
         super().__init__()
         self.window_size = window_size
@@ -250,18 +272,18 @@ class RelativePositionBias(nn.Module):
         return relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
 
 
-class ViTSpectral(nn.Module):
+class VisionSpectralRoPE(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None, add_spect=True
-                 use_abs_pos_emb=True, use_rel_pos_bias=False, use_shared_rel_pos_bias=False,
-                 use_mean_pooling=True, init_scale=0.001, return_feat=False):
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None, add_spect = True,
+                 use_rope_emb=True, use_rel_pos_bias=False, use_shared_rel_pos_bias=False,
+                 use_mean_pooling=True, init_scale=0.001):
         super().__init__()
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim
         self.patch_size = patch_size
+        self.max_seq_len = (img_size // patch_size) ** 2
         self.in_chans = in_chans
-        self.return_feat = return_feat
         self.h = img_size // patch_size
         self.w = self.h // 2 + 1
 
@@ -270,10 +292,12 @@ class ViTSpectral(nn.Module):
         num_patches = self.patch_embed.num_patches
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
-        if use_abs_pos_emb:
-            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
+        if use_rope_emb:
+            self.pos_embed = FixedPositionalEmbedding(embed_dim, self.max_seq_len)
+            self.layer_pos_emb = FixedPositionalEmbedding(64, self.max_seq_len)
         else:
             self.pos_embed = None
+            self.layer_pos_emb = None
         self.pos_drop = nn.Dropout(p=drop_rate)
 
         if use_shared_rel_pos_bias:
@@ -286,15 +310,15 @@ class ViTSpectral(nn.Module):
         self.blocks = nn.ModuleList([
             Block(
                 self.h, self.w, dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, add_spect = add_spect,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, add_spect=add_spect,
                 init_values=init_values, window_size=self.patch_embed.patch_shape if use_rel_pos_bias else None)
             for i in range(depth)])
         self.norm = nn.Identity() if use_mean_pooling else norm_layer(embed_dim)
         self.fc_norm = norm_layer(embed_dim) if use_mean_pooling else None
         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-        if self.pos_embed is not None:
-            self._trunc_normal_(self.pos_embed, std=.02)
+        # if self.pos_embed is not None:
+        #     self._trunc_normal_(self.pos_embed, std=.02)
         self._trunc_normal_(self.cls_token, std=.02)
         if num_classes > 0:
             self._trunc_normal_(self.head.weight, std=.02)
@@ -350,12 +374,13 @@ class ViTSpectral(nn.Module):
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
         x = torch.cat((cls_tokens, x), dim=1)
         if self.pos_embed is not None:
-            x = x + self.pos_embed
+            x += self.pos_embed(x)
         x = self.pos_drop(x)
 
+        rope = self.layer_pos_emb(x) if self.layer_pos_emb is not None else None
         rel_pos_bias = self.rel_pos_bias() if self.rel_pos_bias is not None else None
         for blk in self.blocks:
-            x = blk(x, rel_pos_bias=rel_pos_bias)
+            x = blk(x, rel_pos_bias=rel_pos_bias, rope=rope )
 
         x = self.norm(x)
         if self.fc_norm is not None:
@@ -365,11 +390,6 @@ class ViTSpectral(nn.Module):
             return x[:, 0]
 
     def forward(self, x):
-        if not self.return_feat:
-            x = self.forward_features(x)
-            x = self.head(x)
-            return x
-        
-        feat = self.forward_features(x)
-        x = self.head(feat)
-        return feat, x
+        x = self.forward_features(x)
+        x = self.head(x)
+        return x
