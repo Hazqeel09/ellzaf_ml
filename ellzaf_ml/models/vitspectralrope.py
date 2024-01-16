@@ -104,8 +104,8 @@ class Attention(nn.Module):
 
         if window_size:
             self.window_size = window_size
-            # cls to token & token to cls & cls to cls
-            self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1) + 3
+            self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1)
+
             self.relative_position_bias_table = nn.Parameter(
                 torch.zeros(self.num_relative_distance, num_heads))  # 2*Wh-1 * 2*Ww-1, nH
 
@@ -119,12 +119,7 @@ class Attention(nn.Module):
             relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0
             relative_coords[:, :, 1] += window_size[1] - 1
             relative_coords[:, :, 0] *= 2 * window_size[1] - 1
-            relative_position_index = \
-                torch.zeros(size=(window_size[0] * window_size[1] + 1, ) * 2, dtype=relative_coords.dtype)
-            relative_position_index[1:, 1:] = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
-            relative_position_index[0, 0:] = self.num_relative_distance - 3
-            relative_position_index[0:, 0] = self.num_relative_distance - 2
-            relative_position_index[0, 0] = self.num_relative_distance - 1
+            relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
 
             self.register_buffer("relative_position_index", relative_position_index)
         else:
@@ -243,9 +238,9 @@ class RelativePositionBias(nn.Module):
     def __init__(self, window_size, num_heads):
         super().__init__()
         self.window_size = window_size
-        self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1)  # Adjusted
+        self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1)
         self.relative_position_bias_table = nn.Parameter(
-            torch.zeros(self.num_relative_distance, num_heads))  # Adjusted
+            torch.zeros(self.num_relative_distance, num_heads))
 
         # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(window_size[0])
