@@ -219,7 +219,6 @@ class Block(nn.Module):
             else:
                 x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x), rel_pos_bias=rel_pos_bias, rope=rope))
             x = x + self.drop_path(self.gamma_3 * self.mlp(self.norm2(x)))
-            x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
 
