@@ -214,7 +214,6 @@ class PatchEmbed(nn.Module):
 
 
 class RelativePositionBias(nn.Module):
-
     def __init__(self, window_size, num_heads):
         super().__init__()
         self.window_size = window_size
@@ -253,7 +252,7 @@ class RelativePositionBias(nn.Module):
 class ViTSpectral(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None, add_spect=True
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None, add_spect=True,
                  use_abs_pos_emb=True, use_rel_pos_bias=False, use_shared_rel_pos_bias=False,
                  use_mean_pooling=True, init_scale=0.001, return_feat=False):
         super().__init__()
