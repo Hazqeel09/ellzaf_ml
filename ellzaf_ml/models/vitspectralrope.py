@@ -190,7 +190,7 @@ class Block(nn.Module):
             attn_drop=attn_drop, proj_drop=drop, window_size=window_size, attn_head_dim=attn_head_dim)
         if add_spect:
             self.spect = SpectralGatingNetwork(dim, h, w)
-        self.normspect = norm_layer(dim)
+            self.normspect = norm_layer(dim)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
