@@ -1,3 +1,11 @@
+# --------------------------------------------------------
+# SimMIM
+# Copyright (c) 2021 Microsoft
+# Licensed under The MIT License [see LICENSE for details]
+# Based on BEIT code bases (https://github.com/microsoft/unilm/tree/master/beit)
+# Written by Yutong Lin, Zhenda Xie
+# --------------------------------------------------------
+
 import math
 from functools import partial
 
@@ -180,7 +188,8 @@ class Block(nn.Module):
         self.attn = Attention(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
             attn_drop=attn_drop, proj_drop=drop, window_size=window_size, attn_head_dim=attn_head_dim)
-        self.spect = SpectralGatingNetwork(dim, h, w)
+        if add_spect:
+            self.spect = SpectralGatingNetwork(dim, h, w)
         self.normspect = norm_layer(dim)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
@@ -215,6 +224,8 @@ class Block(nn.Module):
 
 
 class PatchEmbed(nn.Module):
+    """ Image to Patch Embedding
+    """
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
         super().__init__()
         img_size = to_2tuple(img_size)
@@ -237,6 +248,7 @@ class PatchEmbed(nn.Module):
 
 
 class RelativePositionBias(nn.Module):
+
     def __init__(self, window_size, num_heads):
         super().__init__()
         self.window_size = window_size
@@ -275,7 +287,7 @@ class RelativePositionBias(nn.Module):
 class VisionSpectralRoPE(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3, num_classes=1000, embed_dim=768, depth=12,
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
-                 drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None, add_spect = True,
+                 drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None, add_spect=True,
                  use_rope_emb=True, use_rel_pos_bias=False, use_shared_rel_pos_bias=False,
                  use_mean_pooling=True, init_scale=0.001):
         super().__init__()
