@@ -32,6 +32,8 @@ class ProjectorDistillationTeacher(nn.Module):
     def __init__(self, encoder, out):
         super().__init__()
         self.encoder = encoder
+        for param in self.encoder.parameters():
+            param.requires_grad = False
 
         self.projector = nn.Sequential(
             nn.BatchNorm1d(out),

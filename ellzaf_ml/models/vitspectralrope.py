@@ -107,19 +107,18 @@ class Attention(nn.Module):
             self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1)
 
             self.relative_position_bias_table = nn.Parameter(
-                torch.zeros(self.num_relative_distance, num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+                torch.zeros(self.num_relative_distance, num_heads))  # Adjusted size
 
-            # get pair-wise relative position index for each token inside the window
             coords_h = torch.arange(window_size[0])
             coords_w = torch.arange(window_size[1])
-            coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
-            coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-            relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
-            relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
-            relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0
+            coords = torch.stack(torch.meshgrid([coords_h, coords_w]))
+            coords_flatten = torch.flatten(coords, 1)
+            relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]
+            relative_coords = relative_coords.permute(1, 2, 0).contiguous()
+            relative_coords[:, :, 0] += window_size[0] - 1
             relative_coords[:, :, 1] += window_size[1] - 1
             relative_coords[:, :, 0] *= 2 * window_size[1] - 1
-            relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+            relative_position_index = relative_coords.sum(-1)
 
             self.register_buffer("relative_position_index", relative_position_index)
         else:
@@ -149,9 +148,9 @@ class Attention(nn.Module):
         if self.relative_position_bias_table is not None:
             relative_position_bias = \
                 self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
-                    self.window_size[0] * self.window_size[1] + 1,
-                    self.window_size[0] * self.window_size[1] + 1, -1)  # Wh*Ww,Wh*Ww,nH
-            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+                    self.window_size[0] * self.window_size[1],  # Adjusted size
+                    self.window_size[0] * self.window_size[1],  -1)  # Wh*Ww, Wh*Ww, nH
+            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()
             attn = attn + relative_position_bias.unsqueeze(0)
 
         if rel_pos_bias is not None:
@@ -269,13 +268,14 @@ class ViTSpectralRoPE(nn.Module):
                  num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0., attn_drop_rate=0.,
                  drop_path_rate=0., norm_layer=nn.LayerNorm, init_values=None, add_spect=True,
                  use_rope_emb=True, use_rel_pos_bias=False, use_shared_rel_pos_bias=False,
-                 use_mean_pooling=True, init_scale=0.001):
+                 use_mean_pooling=True, init_scale=0.001, return_feat=False):
         super().__init__()
         self.num_classes = num_classes
         self.num_features = self.embed_dim = embed_dim
         self.patch_size = patch_size
         self.max_seq_len = (img_size // patch_size) ** 2
         self.in_chans = in_chans
+        self.return_feat = return_feat
         self.h = img_size // patch_size
         self.w = self.h // 2 + 1
 
@@ -283,7 +283,6 @@ class ViTSpectralRoPE(nn.Module):
             img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         if use_rope_emb:
             self.pos_embed = FixedPositionalEmbedding(embed_dim, self.max_seq_len)
             self.layer_pos_emb = FixedPositionalEmbedding(64, self.max_seq_len)
@@ -309,9 +308,6 @@ class ViTSpectralRoPE(nn.Module):
         self.fc_norm = norm_layer(embed_dim) if use_mean_pooling else None
         self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
 
-        # if self.pos_embed is not None:
-        #     self._trunc_normal_(self.pos_embed, std=.02)
-        self._trunc_normal_(self.cls_token, std=.02)
         if num_classes > 0:
             self._trunc_normal_(self.head.weight, std=.02)
         self.apply(self._init_weights)
@@ -374,11 +370,16 @@ class ViTSpectralRoPE(nn.Module):
 
         x = self.norm(x)
         if self.fc_norm is not None:
-            return self.fc_norm(t.mean(1))
+            return self.fc_norm(x.mean(1))
         else:
             return x[:, 0]
 
     def forward(self, x):
-        x = self.forward_features(x)
-        x = self.head(x)
-        return x
+        if not self.return_feat:
+            x = self.forward_features(x)
+            x = self.head(x)
+            return x
+        
+        feat = self.forward_features(x)
+        x = self.head(feat)
+        return feat, x
