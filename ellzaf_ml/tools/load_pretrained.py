@@ -5,7 +5,10 @@ from scipy import interpolate
 def load_pretrained(model,path,distil=False):
     print(f">>>>>>>>>> Fine-tuned from {path} ..........")
     checkpoint = torch.load(path, map_location='cpu')
-    checkpoint_model = checkpoint['model']
+    if not distil:
+        checkpoint_model = checkpoint['model']
+    else:
+        checkpoint_model = checkpoint
     
     if any([True if 'encoder.' in k else False for k in checkpoint_model.keys()]):
         checkpoint_model = {k.replace('encoder.', ''): v for k, v in checkpoint_model.items() if k.startswith('encoder.')}
@@ -106,16 +109,6 @@ def remap_pretrained_keys_vit(model, checkpoint_model):
     return checkpoint_model
 
 def remap_pretrained_keys_vit_distil(model, checkpoint_model):
-    # Duplicate shared rel_pos_bias to each layer
-    # if getattr(model, 'use_rel_pos_bias', False) and "rel_pos_bias.relative_position_bias_table" in checkpoint_model:
-    #     print("Expand the shared relative position embedding to each transformer block.")
-    # num_layers = model.get_num_layers()
-    # rel_pos_bias = checkpoint_model["rel_pos_bias.relative_position_bias_table"]
-    # for i in range(num_layers):
-    #     checkpoint_model["blocks.%d.attn.relative_position_bias_table" % i] = rel_pos_bias.clone()
-    # checkpoint_model.pop("rel_pos_bias.relative_position_bias_table")
-    
-    # Geometric interpolation when pre-trained patch size mismatch with fine-tuned patch size
     all_keys = list(checkpoint_model.keys())
     for key in all_keys:
 
