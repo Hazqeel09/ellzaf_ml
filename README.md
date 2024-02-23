@@ -36,6 +36,7 @@ Any model that can be use in different way from the paper will be inside Experim
 3. [LBP and CNN Feature Fusion for face anti-spoofing](https://github.com/Hazqeel09/ellzaf_ml#lbp-and-cnn-feature-fusion-for-face-anti-spoofing)
 4. [LDnet with the combination of 2D and 3D](https://github.com/Hazqeel09/ellzaf_ml#ldnet-with-the-combination-of-2d-and-3d)
 5. [SimMIM](https://github.com/Hazqeel09/ellzaf_ml#simmim)
+6. [MixMobileNet](https://github.com/Hazqeel09/ellzaf_ml#mixmobilenet)
 
 🛠️ Tool
 1. [PyTorch Early Stopping](https://github.com/Hazqeel09/ellzaf_ml#-earlystopping)
@@ -314,7 +315,7 @@ preds = model(img) # prediction -> (1,2)
 ```
 
 ### 🌟SimMIM
-
+<img src="./images/simmim.png"></img>
 Modified SimMIM code from the original [repo](https://github.com/microsoft/SimMIM/tree/main) but the archtecture is still the same.
 
 ```python
@@ -341,6 +342,22 @@ encoder_stride = 16
 
 simmim = SimMIM(encoder=encoder, encoder_stride=encoder_stride)
 ```
+
+### 🌟MixMobileNet
+<img src="./images/mixmobilenet.png"></img>
+Implementation of [MixMobileNet](https://github.com/microsoft/SimMIM/tree/main). There are three variants: XXS, XS and S.
+
+```python
+import torch
+from ellzaf_ml.models import MixMobileNet
+
+img = torch.randn(1, 3, 224, 224)
+model = MixMobileNet(variant="M", img_size=224, num_classes=2)
+model(img)
+```
+
+Due to the paper does not implicitly mention their approach when image height and width that is non-power-of-two.
+I add `output_padding=1` to `ConvTranspose2d` so that it can also work when the image height and width is non-power-of-two.
 
 ## 🛠️ Tools
 ### 🔨 EarlyStopping
