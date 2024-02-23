@@ -352,7 +352,7 @@ import torch
 from ellzaf_ml.models import MixMobileNet
 
 img = torch.randn(1, 3, 224, 224)
-model = MixMobileNet(variant="M", img_size=224, num_classes=2)
+model = MixMobileNet(variant="S", img_size=224, num_classes=2)
 model(img)
 ```
 
