@@ -357,7 +357,6 @@ class ViTSpectralRoPE(nn.Module):
 
     def forward_features(self, x):
         x = self.patch_embed(x)
-        batch_size, seq_len, _ = x.size()
 
         if self.pos_embed is not None:
             x += self.pos_embed(x)
