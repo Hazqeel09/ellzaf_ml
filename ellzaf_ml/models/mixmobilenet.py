@@ -296,11 +296,23 @@ class MixMobileNet(nn.Module):
                 "lfae_kernel_size": [3, 5, 7, 9],
                 "gfae_depth": [0, 1, 1, 1],
             },
-            "M": { # Experimental
+            "Sv2": { # Experimental
                 "channels": [32, 64, 128, 256],
                 "lfae_depth": [3, 2, 9, 2],
                 "lfae_kernel_size": [3, 5, 7, 9],
                 "gfae_depth": [0, 1, 3, 1],
+            },
+            "M": { # Experimental
+                "channels": [64, 128, 256, 512],
+                "lfae_depth": [3, 2, 9, 2],
+                "lfae_kernel_size": [3, 5, 7, 9],
+                "gfae_depth": [0, 1, 3, 1],
+            },
+            "L": { # Experimental
+                "channels": [128, 256, 512, 1024],
+                "lfae_depth": [3, 2, 14, 2],
+                "lfae_kernel_size": [3, 5, 7, 9],
+                "gfae_depth": [0, 1, 13, 1],
             },
         }
         config = configs[variant]
