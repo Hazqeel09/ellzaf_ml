@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from timm.models.layers import DropPath
+from timm.models.layers import DropPath, trunc_normal_
 from torch import Tensor
 import torch.nn.functional as F
 import math
@@ -200,22 +200,56 @@ class DownsampleLayer(nn.Module):
     def forward(self, x):
         return self.conv(x)
 
+class Residual(nn.Module):
+    def __init__(self, fn1):
+        super().__init__()
+        self.fn1 = fn1
+    def forward(self, x, **kwargs):
+        return self.fn1(x, **kwargs) + x
 
-def make_stage(in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, drop_path=0.0):
-    layers = [DownsampleLayer(in_channels, out_channels)]
-    for _ in range(lfae_depth):
-        layers.append(
-            LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path)
-        )
-    for _ in range(gfae_depth):
-        layers.append(
-            GFAEncoder(dim=out_channels, feat_size=feat_size, drop_path=drop_path)
-        )
-    return nn.Sequential(*layers)
+class MixMobileBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, drop_path=0.0):
+        super().__init__()
+        self.downsample = DownsampleLayer(in_channels, out_channels)
+        self.lfae_depth = lfae_depth
+        self.gfae_depth = gfae_depth
+
+        self.layers = nn.ModuleList([])
+        self.lfae_layers = nn.ModuleList([])
+        self.gfae_layers = nn.ModuleList([]) if gfae_depth > 0 else nn.Identity()
+
+        for _ in range(lfae_depth):
+            self.lfae_layers.append(
+                Residual(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path))
+            )
+        for _ in range(gfae_depth):
+            self.gfae_layers.append(
+                Residual(GFAEncoder(dim=out_channels, feat_size=feat_size, drop_path=drop_path))
+            )
+
+        if self.gfae_depth > 0:
+            self.pos_embed_lfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
+            self.pos_embed_gfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
+        else:
+            self.pos_embed_lfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
+
+    def forward(self, x):
+        if self.gfae_depth > 0:
+            x = self.downsample(x)
+
+        x = x + self.pos_embed_lfae
+        for lfae in self.lfae_layers:
+            x = lfae(x)
+        
+        if self.gfae_depth > 0:
+            x = x + self.pos_embed_gfae
+            for gfae in self.gfae_layers:
+                x = gfae(x)
+        return x
 
 
 class MixMobileNet(nn.Module):
-    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True):
+    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, init_weights=False):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -248,7 +282,8 @@ class MixMobileNet(nn.Module):
         self.num_features = config["channels"][-1]
         self.num_classes = num_classes
 
-        self.img_size = math.floor(math.sqrt(img_size))
+        # self.img_size = math.floor(math.sqrt(img_size))
+        self.img_size = img_size // 4
 
         self.stem = Stem(input_channels=3, output_channels=config["channels"][0])
         self.stages = nn.ModuleList()
@@ -256,7 +291,7 @@ class MixMobileNet(nn.Module):
         # Instantiate stages with the configured number of channels and blocks
         in_channels = config["channels"][0]
         for i, out_channels in enumerate(config["channels"]):
-            stage = make_stage(
+            mmb = MixMobileBlock(
                 in_channels=in_channels,
                 out_channels=out_channels,
                 lfae_depth=config["lfae_depth"][i],
@@ -266,10 +301,11 @@ class MixMobileNet(nn.Module):
                 train=train,
                 drop_path=0.0,  # Placeholder for drop_path, adjust as needed
             )
-            self.stages.append(stage)
+            self.stages.append(mmb)
             in_channels = out_channels
-            if config["gfae_depth"][i] > 0:
-                self.img_size = self.img_size // 2
+            self.img_size = self.img_size // 2 #if i > 1 else math.floor(math.sqrt(img_size))
+            # if i > 0:
+            #     self.img_size = self.img_size // 2
 
         if num_classes > 0:
             self.head = nn.Sequential(
@@ -279,6 +315,25 @@ class MixMobileNet(nn.Module):
             )
         else:
             self.head = nn.Identity()
+
+        if init_weights:
+            self.apply(self._init_weights)
+
+    def _trunc_normal_(self, tensor, mean=0., std=1.):
+        trunc_normal_(tensor, mean=mean, std=std)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            self._trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            self._trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         x = self.stem(x)
