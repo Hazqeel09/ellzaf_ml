@@ -356,8 +356,8 @@ model = MixMobileNet(variant="S", img_size=224, num_classes=2)
 model(img)
 ```
 
-Due to the paper does not implicitly mention their approach when image height and width that is non-power-of-two.
-I add `output_padding=1` to `ConvTranspose2d` so that it can also work when the image height and width is non-power-of-two.
+Due to the paper does not implicitly mention their approach when image height and width is non-power-of-two.
+I decided to pad the output from downsampler with 0 at right and bottom so that 7x7 will become 8x8.
 
 ## 🛠️ Tools
 ### 🔨 EarlyStopping

@@ -34,20 +34,19 @@ class GFAEncoder(nn.Module):
 
     def __init__(self, dim, feat_size, drop_path=0.0, expan_ratio=4, n_heads=4, qkv_bias=True):
         super().__init__()
-        self.norm1 = nn.LayerNorm(dim, eps=1e-6)
+
         self.n_heads = n_heads
+
+        self.avgpool = nn.AvgPool2d(2, stride=2)
+        self.norm1 = nn.LayerNorm(dim, eps=1e-6)
+        
         self.temp = nn.Parameter(torch.ones(n_heads, 1, 1))
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.proj = nn.Linear(dim, dim)
         self.dk_ratio = 0.2
         self.dw = nn.Conv2d(dim, dim, kernel_size=3, padding=3 // 2, groups=dim)
-        self.avgpool = nn.AvgPool2d(2, stride=2)
-        if feat_size % 2 == 0:
-            self.convtranspose2d = nn.ConvTranspose2d(dim, dim, 2, stride=2)
-        else:
-            self.convtranspose2d = nn.ConvTranspose2d(
-                dim, dim, kernel_size=2, stride=2, output_padding=1
-            )
+        
+        self.convtranspose2d = nn.ConvTranspose2d(dim, dim, 2, stride=2)
         self.norm2 = nn.LayerNorm(dim, eps=1e-6)
         self.pw1 = nn.Linear(dim, expan_ratio * dim)  # pointwise/1x1 convs
         self.act = nn.GELU()
@@ -188,17 +187,24 @@ class LFAEncoder(nn.Module):
         x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
         x = self.se(input + self.drop_path(x))
         return x
-
-
+    
 class DownsampleLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=2, stride=2):
         super().__init__()
         self.conv = nn.Conv2d(
-            in_channels, out_channels, kernel_size=kernel_size, stride=stride
+            in_channels, out_channels, kernel_size=kernel_size, stride=stride,
         )
 
     def forward(self, x):
-        return self.conv(x)
+        x = self.conv(x)
+        # Check if the height or width is odd, and if so, pad to make it even
+        height, width = x.size()[2:]
+        pad_height = (height % 2 != 0)
+        pad_width = (width % 2 != 0)
+        if pad_height or pad_width:
+            # Apply padding to the bottom and/or right if needed
+            x = F.pad(x, (0, pad_width, 0, pad_height))
+        return x
 
 class Residual(nn.Module):
     def __init__(self, fn1):
@@ -206,50 +212,69 @@ class Residual(nn.Module):
         self.fn1 = fn1
     def forward(self, x, **kwargs):
         return self.fn1(x, **kwargs) + x
+    
+class PositionalEncoding(nn.Module):
+    # from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
+        super().__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        position = torch.arange(max_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+        pe = torch.zeros(max_len, 1, d_model)
+        pe[:, 0, 0::2] = torch.sin(position * div_term)
+        pe[:, 0, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = x + self.pe[:x.size(0)]
+        return self.dropout(x)
 
 class MixMobileBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, drop_path=0.0):
+    def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, add_pos, drop_path=0.0):
         super().__init__()
         self.downsample = DownsampleLayer(in_channels, out_channels)
         self.lfae_depth = lfae_depth
         self.gfae_depth = gfae_depth
+        self.add_pos = add_pos
 
-        self.layers = nn.ModuleList([])
-        self.lfae_layers = nn.ModuleList([])
-        self.gfae_layers = nn.ModuleList([]) if gfae_depth > 0 else nn.Identity()
+        if add_pos:
+            self.pos_embed_lfae = PositionalEncoding(d_model=feat_size, dropout=0.1, max_len=feat_size)
+            if self.gfae_depth > 0:
+                self.pos_embed_gfae = PositionalEncoding(d_model=feat_size, dropout=0.1, max_len=feat_size)
 
-        for _ in range(lfae_depth):
-            self.lfae_layers.append(
-                Residual(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path))
-            )
-        for _ in range(gfae_depth):
-            self.gfae_layers.append(
+        self.lfae_layers = nn.ModuleList([
+            Residual(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path))
+            for _ in range(lfae_depth)
+        ])
+        
+        if gfae_depth > 0:
+            self.gfae_layers = nn.ModuleList([
                 Residual(GFAEncoder(dim=out_channels, feat_size=feat_size, drop_path=drop_path))
-            )
-
-        if self.gfae_depth > 0:
-            self.pos_embed_lfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
-            self.pos_embed_gfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
+                for _ in range(gfae_depth)
+            ])
         else:
-            self.pos_embed_lfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
+            self.gfae_layers = nn.Identity()
 
     def forward(self, x):
         if self.gfae_depth > 0:
             x = self.downsample(x)
-
-        x = x + self.pos_embed_lfae
+        
+        if self.add_pos:
+            x = self.pos_embed_lfae(x)
         for lfae in self.lfae_layers:
             x = lfae(x)
         
         if self.gfae_depth > 0:
-            x = x + self.pos_embed_gfae
+            if self.add_pos:
+                x = self.pos_embed_gfae(x)
             for gfae in self.gfae_layers:
                 x = gfae(x)
         return x
 
 
 class MixMobileNet(nn.Module):
-    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, init_weights=False):
+    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, init_weights=False):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -299,13 +324,12 @@ class MixMobileNet(nn.Module):
                 gfae_depth=config["gfae_depth"][i],
                 feat_size=self.img_size,
                 train=train,
+                add_pos=add_pos,
                 drop_path=0.0,  # Placeholder for drop_path, adjust as needed
             )
             self.stages.append(mmb)
             in_channels = out_channels
-            self.img_size = self.img_size // 2 #if i > 1 else math.floor(math.sqrt(img_size))
-            # if i > 0:
-            #     self.img_size = self.img_size // 2
+            self.img_size = (self.img_size  // 2) + (1 if (self.img_size  // 2) % 2 != 0 else 0)
 
         if num_classes > 0:
             self.head = nn.Sequential(
