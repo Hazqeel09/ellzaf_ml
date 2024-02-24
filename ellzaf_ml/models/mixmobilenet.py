@@ -4,6 +4,7 @@ from timm.models.layers import DropPath, trunc_normal_
 from torch import Tensor
 import torch.nn.functional as F
 import math
+import numpy as np
 
 
 class Stem(nn.Module):
@@ -218,6 +219,7 @@ class PositionalEncoding(nn.Module):
     def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
+        self.d_model = d_model
 
         position = torch.arange(max_len).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
@@ -227,8 +229,52 @@ class PositionalEncoding(nn.Module):
         self.register_buffer('pe', pe)
 
     def forward(self, x: Tensor) -> Tensor:
-        x = x + self.pe[:x.size(0)]
+        x = x + self.pe[None, :x.shape[1], :]
         return self.dropout(x)
+
+class PositionalEncoding2D(nn.Module):
+    def __init__(self, channels, max_size=100):
+        super(PositionalEncoding2D, self).__init__()
+        self.channels = channels
+        adjusted_channels = int(np.ceil(channels / 4) * 2)
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, adjusted_channels, 2).float() / adjusted_channels))
+
+        # Precompute positional encodings for max_size in both dimensions
+        pos = torch.arange(max_size).unsqueeze(1)
+        sin_inp = torch.einsum("i,j->ij", pos.flatten(), inv_freq)
+
+        emb_sin = torch.sin(sin_inp)
+        emb_cos = torch.cos(sin_inp)
+        emb = torch.cat((emb_sin, emb_cos), dim=-1)
+
+        # Ensure the embedding size matches the channel size exactly
+        if self.channels % 2 == 1:  # Odd number of channels
+            emb = torch.cat((emb, emb[:, :1]), dim=-1)  # Append one more column to match size
+
+        self.register_buffer('emb', emb)
+
+    def forward(self, tensor):
+        if len(tensor.shape) != 4:
+            raise RuntimeError("The input tensor has to be 4d!")
+
+        _, orig_ch, x, y = tensor.shape
+        emb_x = self.emb[:x, :self.channels//2].unsqueeze(1).repeat(1, y, 1)
+        emb_y = self.emb[:y, :self.channels//2].unsqueeze(0).repeat(x, 1, 1)
+
+        # Corrected line for creating an empty tensor with the proper device and dtype
+        emb = torch.empty(x, y, self.channels, device=tensor.device, dtype=tensor.dtype)
+        emb[..., ::2] = emb_x
+        emb[..., 1::2] = emb_y
+
+        # Adjust if the number of channels in the input tensor is different
+        if orig_ch != self.channels:
+            if orig_ch < self.channels:
+                emb = emb[..., :orig_ch]
+            else:  # If more channels in input than embeddings, replicate the last channel
+                emb = torch.cat([emb, emb[..., -1:]], dim=-1)
+        emb = emb.permute(2, 0, 1)
+        return tensor + emb[None, :, :, :]
+
 
 class MixMobileBlock(nn.Module):
     def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, add_pos, drop_path=0.0):
@@ -238,10 +284,15 @@ class MixMobileBlock(nn.Module):
         self.gfae_depth = gfae_depth
         self.add_pos = add_pos
 
+        # if add_pos:
+        #     self.pos_embed_lfae = PositionalEncoding(d_model=feat_size, dropout=0.1, max_len=feat_size)
+        #     if self.gfae_depth > 0:
+        #         self.pos_embed_gfae = PositionalEncoding(d_model=feat_size, dropout=0.1, max_len=feat_size)
+
         if add_pos:
-            self.pos_embed_lfae = PositionalEncoding(d_model=feat_size, dropout=0.1, max_len=feat_size)
+            self.pos_embed_lfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size)
             if self.gfae_depth > 0:
-                self.pos_embed_gfae = PositionalEncoding(d_model=feat_size, dropout=0.1, max_len=feat_size)
+                self.pos_embed_gfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size)
 
         self.lfae_layers = nn.ModuleList([
             Residual(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path))
@@ -296,7 +347,7 @@ class MixMobileNet(nn.Module):
                 "lfae_kernel_size": [3, 5, 7, 9],
                 "gfae_depth": [0, 1, 1, 1],
             },
-            "Sv2": { # Experimental
+            "SS": { # Experimental
                 "channels": [32, 64, 128, 256],
                 "lfae_depth": [3, 2, 9, 2],
                 "lfae_kernel_size": [3, 5, 7, 9],

@@ -92,7 +92,8 @@ class MixMobileNetForSimMIM(MixMobileNet):
 
         assert self.num_classes == 0
 
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, self.num_features))
+        # self.mask_token = nn.Parameter(torch.zeros(1, 1, self.num_features))
+        self.mask_token = nn.Parameter(torch.zeros(1, 3, 1, 1))
         self._trunc_normal_(self.mask_token, std=0.02)
 
     def _trunc_normal_(self, tensor, mean=0.0, std=1.0):
@@ -101,18 +102,31 @@ class MixMobileNetForSimMIM(MixMobileNet):
     def forward(self, x, mask):
 
         assert mask is not None
-        B, L, _ = x.shape
+        print(mask.shape, x.shape)
+        print(x.shape, mask.shape)
+        B, C, H, W = x.shape  # Corrected to get channel dimension C
 
-        mask_token = self.mask_token.expand(B, L, -1)
-        w = mask.flatten(1).unsqueeze(-1).type_as(mask_token)
-        x = x * (1 - w) + mask_token * w
+        # Prepare mask
+        mask = mask.view(B, 1, 14, 14).float()
+        mask = F.interpolate(mask, size=(H, W), mode='nearest')
+
+        # Prepare mask_token, ensuring it matches the input's channel dimension
+        mask_token = self.mask_token.expand(B, C, H, W)  # Correctly matching channel dimension
+        print(mask_token.shape)
+        print(mask_token)
+
+        # Apply mask: replace regions with mask_token where mask is 1
+        x = torch.where(mask > 0.5, mask_token, x)
+        print(x.shape)
+        print(x)
 
         x = self.stem(x)
         for stage in self.stages:
             x = stage(x)
-        B, L, C = x.shape
-        H = W = int(L**0.5)
-        x = x.permute(0, 2, 1).reshape(B, C, H, W)
+        print(x.shape)
+        # B, L, C = x.shape
+        # H = W = int(L**0.5)
+        # x = x.permute(0, 2, 1).reshape(B, C, H, W)
         return x
 
 class SimMIM(nn.Module):
