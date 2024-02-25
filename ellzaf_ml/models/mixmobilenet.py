@@ -33,7 +33,7 @@ class GFAEncoder(nn.Module):
         qkv_bias (bool, optional): Whether to include bias in the qkv linear layer. Defaults to True.
     """
 
-    def __init__(self, dim, feat_size, drop_path=0.0, expan_ratio=4, n_heads=4, qkv_bias=True):
+    def __init__(self, dim, drop_path=0.0, expan_ratio=4, n_heads=4, qkv_bias=True):
         super().__init__()
 
         self.n_heads = n_heads
@@ -213,29 +213,12 @@ class Residual(nn.Module):
         self.fn1 = fn1
     def forward(self, x, **kwargs):
         return self.fn1(x, **kwargs) + x
-    
-class PositionalEncoding(nn.Module):
-    # from https://pytorch.org/tutorials/beginner/transformer_tutorial.html
-    def __init__(self, d_model: int, dropout: float = 0.1, max_len: int = 5000):
-        super().__init__()
-        self.dropout = nn.Dropout(p=dropout)
-        self.d_model = d_model
-
-        position = torch.arange(max_len).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
-        pe = torch.zeros(max_len, 1, d_model)
-        pe[:, 0, 0::2] = torch.sin(position * div_term)
-        pe[:, 0, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe)
-
-    def forward(self, x: Tensor) -> Tensor:
-        x = x + self.pe[None, :x.shape[1], :]
-        return self.dropout(x)
 
 class PositionalEncoding2D(nn.Module):
-    def __init__(self, channels, max_size=100):
+    def __init__(self, channels: int, max_size:  int = 100, dropout: float = 0.0):
         super(PositionalEncoding2D, self).__init__()
         self.channels = channels
+        self.dropout = nn.Dropout(p=dropout)
         adjusted_channels = int(np.ceil(channels / 4) * 2)
         inv_freq = 1.0 / (10000 ** (torch.arange(0, adjusted_channels, 2).float() / adjusted_channels))
 
@@ -273,21 +256,34 @@ class PositionalEncoding2D(nn.Module):
             else:  # If more channels in input than embeddings, replicate the last channel
                 emb = torch.cat([emb, emb[..., -1:]], dim=-1)
         emb = emb.permute(2, 0, 1)
-        return tensor + emb[None, :, :, :]
+        tensor = tensor + emb[None, :, :, :]
+        return self.dropout(tensor)
 
 
 class MixMobileBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, add_pos, drop_path=0.0):
+    def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, add_pos, learnable_pos,
+                drop_path=0.0, dropout=0.0):
         super().__init__()
         self.downsample = DownsampleLayer(in_channels, out_channels)
         self.lfae_depth = lfae_depth
         self.gfae_depth = gfae_depth
         self.add_pos = add_pos
+        self.learnable_pos = learnable_pos
+
+        assert not (add_pos and learnable_pos), "add_pos and learnable_pos cannot both be True"
 
         if add_pos:
-            self.pos_embed_lfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size)
+            self.pos_embed_lfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size, dropout=dropout)
             if self.gfae_depth > 0:
-                self.pos_embed_gfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size)
+                self.pos_embed_gfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size, dropout=dropout)
+
+        if learnable_pos:
+            self.pos_embed_lfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
+            self._trunc_normal_(self.pos_embed_lfae, std=.02)
+            if self.gfae_depth > 0:
+                self.pos_embed_gfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
+                self._trunc_normal_(self.pos_embed_gfae, std=.02)
+
 
         self.lfae_layers = nn.ModuleList([
             Residual(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path))
@@ -296,11 +292,14 @@ class MixMobileBlock(nn.Module):
         
         if gfae_depth > 0:
             self.gfae_layers = nn.ModuleList([
-                Residual(GFAEncoder(dim=out_channels, feat_size=feat_size, drop_path=drop_path))
+                Residual(GFAEncoder(dim=out_channels, drop_path=drop_path))
                 for _ in range(gfae_depth)
             ])
         else:
             self.gfae_layers = nn.Identity()
+    
+    def _trunc_normal_(self, tensor, mean=0., std=1.):
+        trunc_normal_(tensor, mean=mean, std=std)
 
     def forward(self, x):
         if self.gfae_depth > 0:
@@ -308,19 +307,24 @@ class MixMobileBlock(nn.Module):
         
         if self.add_pos:
             x = self.pos_embed_lfae(x)
+        if self.learnable_pos:
+            x = x + self.pos_embed_lfae
         for lfae in self.lfae_layers:
             x = lfae(x)
         
         if self.gfae_depth > 0:
             if self.add_pos:
                 x = self.pos_embed_gfae(x)
+            if self.learnable_pos:
+                x = x + self.pos_embed_gfae
             for gfae in self.gfae_layers:
                 x = gfae(x)
         return x
 
 
 class MixMobileNet(nn.Module):
-    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, init_weights=False):
+    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False,
+                 init_weights=False, drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -383,7 +387,9 @@ class MixMobileNet(nn.Module):
                 feat_size=self.img_size,
                 train=train,
                 add_pos=add_pos,
-                drop_path=0.0,  # Placeholder for drop_path, adjust as needed
+                learnable_pos=learnable_pos,
+                drop_path=drop_path,
+                dropout=dropout,
             )
             self.stages.append(mmb)
             in_channels = out_channels
