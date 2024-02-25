@@ -104,10 +104,8 @@ class MixMobileNetForSimMIM(MixMobileNet):
 
         # Resize mask to match the input dimensions
         w = F.interpolate(mask.view(B, 1, 14, 14).float(), size=(H, W), mode='nearest')
-        print(w.shape)
 
         mask_token = self.mask_token.expand(B, C, H, W)
-        print(mask_token.shape)
         x = x * (1 - w) + mask_token * w
 
         x = self.stem(x)
