@@ -85,14 +85,13 @@ class ViTSpectralRoPEForSimMIM(ViTSpectralRoPE):
         H = W = int(L**0.5)
         x = x.permute(0, 2, 1).reshape(B, C, H, W)
         return x
-
+    
 class MixMobileNetForSimMIM(MixMobileNet):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
         assert self.num_classes == 0
 
-        # self.mask_token = nn.Parameter(torch.zeros(1, 1, self.num_features))
         self.mask_token = nn.Parameter(torch.zeros(1, 3, 1, 1))
         self._trunc_normal_(self.mask_token, std=0.02)
 
@@ -100,33 +99,20 @@ class MixMobileNetForSimMIM(MixMobileNet):
         trunc_normal_(tensor, mean=mean, std=std, a=-std, b=std)
 
     def forward(self, x, mask):
-
         assert mask is not None
-        print(mask.shape, x.shape)
-        print(x.shape, mask.shape)
-        B, C, H, W = x.shape  # Corrected to get channel dimension C
+        B, C, H, W = x.shape
 
-        # Prepare mask
-        mask = mask.view(B, 1, 14, 14).float()
-        mask = F.interpolate(mask, size=(H, W), mode='nearest')
+        # Resize mask to match the input dimensions
+        w = F.interpolate(mask.view(B, 1, 14, 14).float(), size=(H, W), mode='nearest')
+        print(w.shape)
 
-        # Prepare mask_token, ensuring it matches the input's channel dimension
-        mask_token = self.mask_token.expand(B, C, H, W)  # Correctly matching channel dimension
+        mask_token = self.mask_token.expand(B, C, H, W)
         print(mask_token.shape)
-        print(mask_token)
-
-        # Apply mask: replace regions with mask_token where mask is 1
-        x = torch.where(mask > 0.5, mask_token, x)
-        print(x.shape)
-        print(x)
+        x = x * (1 - w) + mask_token * w
 
         x = self.stem(x)
         for stage in self.stages:
             x = stage(x)
-        print(x.shape)
-        # B, L, C = x.shape
-        # H = W = int(L**0.5)
-        # x = x.permute(0, 2, 1).reshape(B, C, H, W)
         return x
 
 class SimMIM(nn.Module):
@@ -135,15 +121,6 @@ class SimMIM(nn.Module):
         self.encoder = encoder
         self.encoder_stride = encoder_stride
 
-        self.decoder = nn.Sequential(
-            nn.Conv2d(
-                in_channels=self.encoder.num_features,
-                out_channels=self.encoder_stride**2 * 3,
-                kernel_size=1,
-            ),
-            nn.PixelShuffle(self.encoder_stride),
-        )
-
         if hasattr(self.encoder, 'in_chans') and self.encoder.in_chans is not None:
             self.in_chans = self.encoder.in_chans
         else:
@@ -151,8 +128,24 @@ class SimMIM(nn.Module):
 
         if hasattr(self.encoder, 'patch_size') and self.encoder.patch_size is not None:
             self.patch_size = self.encoder.patch_size
+            self.decoder = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=self.encoder.num_features,
+                    out_channels=self.encoder_stride**2 * 3,
+                    kernel_size=1,
+                ),
+                nn.PixelShuffle(self.encoder_stride),
+            )
         else:
             self.patch_size = 16  # Default value
+            self.decoder = nn.Sequential(
+                nn.Conv2d(
+                    in_channels=self.encoder.num_features,
+                    out_channels=28**2 * 3,
+                    kernel_size=1,
+                ),
+                nn.PixelShuffle(28),
+            )
 
     def forward(self, x, mask):
         z = self.encoder(x, mask)

@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from scipy import interpolate
 
-def load_pretrained(model,path,distil=False):
+def load_pretrained(model, path, distil=False, not_vit=False):
     print(f">>>>>>>>>> Fine-tuned from {path} ..........")
     checkpoint = torch.load(path, map_location='cpu')
     if not distil:
@@ -17,10 +17,13 @@ def load_pretrained(model,path,distil=False):
         print('Detect non-pre-trained model, pass without doing anything.')
 
     print(f">>>>>>>>>> Remapping pre-trained keys for VIT ..........")
-    if not distil:
-        checkpoint = remap_pretrained_keys_vit(model, checkpoint_model)
+    if not not_vit:
+        if not distil:
+            checkpoint = remap_pretrained_keys_vit(model, checkpoint_model)
+        else:
+            checkpoint = remap_pretrained_keys_vit_distil(model, checkpoint_model)
     else:
-        checkpoint = remap_pretrained_keys_vit_distil(model, checkpoint_model)
+        checkpoint = checkpoint_model
 
     msg = model.load_state_dict(checkpoint_model, strict=False)
     print(msg)
@@ -28,6 +31,21 @@ def load_pretrained(model,path,distil=False):
     del checkpoint
     torch.cuda.empty_cache()
     print(f">>>>>>>>>> loaded successfully {path}")
+
+def remap_pretrained_keys_vit(model, checkpoint_model):
+    # Duplicate shared rel_pos_bias to each layer
+    if getattr(model, 'use_rel_pos_bias', False) and "rel_pos_bias.relative_position_bias_table" in checkpoint_model:
+        print("Expand the shared relative position embedding to each transformer block.")
+    num_layers = model.get_num_layers()
+    rel_pos_bias = checkpoint_model["rel_pos_bias.relative_position_bias_table"]
+    for i in range(num_layers):
+        checkpoint_model["blocks.%d.attn.relative_position_bias_table" % i] = rel_pos_bias.clone()
+    checkpoint_model.pop("rel_pos_bias.relative_position_bias_table")
+    
+    # Geometric interpolation when pre-trained patch size mismatch with fine-tuned patch size
+    all_keys = list(checkpoint_model.keys())
+    
+    return checkpoint_model
 
 def remap_pretrained_keys_vit(model, checkpoint_model):
     # Duplicate shared rel_pos_bias to each layer
