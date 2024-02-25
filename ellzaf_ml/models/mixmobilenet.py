@@ -284,11 +284,6 @@ class MixMobileBlock(nn.Module):
         self.gfae_depth = gfae_depth
         self.add_pos = add_pos
 
-        # if add_pos:
-        #     self.pos_embed_lfae = PositionalEncoding(d_model=feat_size, dropout=0.1, max_len=feat_size)
-        #     if self.gfae_depth > 0:
-        #         self.pos_embed_gfae = PositionalEncoding(d_model=feat_size, dropout=0.1, max_len=feat_size)
-
         if add_pos:
             self.pos_embed_lfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size)
             if self.gfae_depth > 0:
