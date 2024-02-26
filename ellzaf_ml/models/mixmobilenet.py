@@ -50,12 +50,14 @@ class Stem(nn.Module):
         self.spect = spect
         if self.spect:
             self.spectral = Residual(SpectralGatingNetwork(input_channels, h, w))
+            self.pos_embed_spectral = nn.Parameter(torch.zeros(1, input_channels, h, h))
+            self._trunc_normal_(self.pos_embed_gfae, std=.02)
         self.conv = nn.Conv2d(input_channels, output_channels, kernel_size=4, stride=4)
         self.norm = nn.BatchNorm2d(output_channels)
 
     def forward(self, x):
         if self.spect:
-            x = self.spectral(x)
+            x = self.spectral(x + self.pos_embed_spectral)
         x = self.conv(x)
         x = self.norm(x)
         return x
