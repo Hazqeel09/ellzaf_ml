@@ -17,7 +17,7 @@ class Residual(nn.Module):
 class SpectralGatingNetwork(nn.Module):
     def __init__(self, dim, h=14, w=8):
         super().__init__()
-        self.complex_weight = nn.Parameter(torch.randn(h, w, dim, 2, dtype=torch.float32) * 0.02)
+        self.complex_weight = nn.Parameter(torch.randn(int(h), int(w), dim, 2, dtype=torch.float32) * 0.02)
         self._trunc_normal_(self.complex_weight, std=.02)
         self.w = w
         self.h = h
@@ -307,6 +307,22 @@ class PositionalEncoding2D(nn.Module):
 
 
 class MixMobileBlock(nn.Module):
+    """
+    MixMobileBlock is a module that represents a block in the MixMobileNet architecture.
+
+    Args:
+        in_channels (int): Number of input channels.
+        out_channels (int): Number of output channels.
+        lfae_depth (int): Depth of the LFAEncoder layers.
+        lfae_kernel_size (int): Kernel size of the LFAEncoder layers.
+        gfae_depth (int): Depth of the GFAEncoder layers.
+        feat_size (int): Size of the feature map.
+        train (bool): Whether the module is in training mode or not.
+        add_pos (bool): Whether to add positional encoding to the input.
+        learnable_pos (bool): Whether to use learnable positional encoding.
+        drop_path (float, optional): Dropout probability for the drop path regularization. Defaults to 0.0.
+        dropout (float, optional): Dropout probability for the positional encoding. Defaults to 0.0.
+    """
     def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, res_all,
                 spect, add_pos, learnable_pos, drop_path=0.0, dropout=0.0):
         super().__init__()
@@ -316,6 +332,7 @@ class MixMobileBlock(nn.Module):
         self.add_pos = add_pos
         self.learnable_pos = learnable_pos
         self.spect = spect
+        self.res_all = res_all
 
         assert not (add_pos and learnable_pos), "add_pos and learnable_pos cannot both be True"
 
@@ -338,23 +355,21 @@ class MixMobileBlock(nn.Module):
                     for _ in range(lfae_depth)
                 ])
             else:
-                self.lfae_layers = Residual(nn.ModuleList([
+                self.lfae_layers = nn.ModuleList([
                     LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path)
                     for _ in range(lfae_depth)
-                ]))
+                ])
         else:
             if res_all:
-                self.lfae_layers = Residual(nn.ModuleList([
-                    SpectralGatingNetwork(out_channels, feat_size, feat_size / 2 + 1),
-                    Residual(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path)
-                    for _ in range(lfae_depth))
-                ]))
+                self.lfae_layers = nn.ModuleList([Residual(SpectralGatingNetwork(out_channels, feat_size, feat_size / 2 + 1))])
+                for _ in range(lfae_depth):
+                    self.lfae_layers.append(Residual(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path))
+                    )
             else:
-                self.lfae_layers = Residual(nn.ModuleList([
-                    SpectralGatingNetwork(out_channels, feat_size, feat_size / 2 + 1),
-                    LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path)
-                    for _ in range(lfae_depth)
-                ]))
+                self.lfae_layers = nn.ModuleList([SpectralGatingNetwork(out_channels, feat_size, feat_size / 2 + 1)])
+                for _ in range(lfae_depth):
+                    self.lfae_layers.append(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path)
+                    )
         
         if gfae_depth > 0:
             if res_all:
@@ -363,9 +378,9 @@ class MixMobileBlock(nn.Module):
                     for _ in range(gfae_depth)
                 ])
             else:
-                self.gfae_layers = Residual(nn.ModuleList([
+                self.gfae_layers = nn.ModuleList([
                     GFAEncoder(dim=out_channels, drop_path=drop_path) for _ in range(gfae_depth)
-                ]))
+                ])
         else:
             self.gfae_layers = nn.Identity()
     
@@ -380,22 +395,46 @@ class MixMobileBlock(nn.Module):
             x = self.pos_embed_lfae(x)
         if self.learnable_pos:
             x = x + self.pos_embed_lfae
-        for lfae in self.lfae_layers:
-            x = lfae(x)
+        if self.res_all:
+            for lfae in self.lfae_layers:
+                x = lfae(x)
+        else:
+            lfae_x = x
+            for lfae in self.lfae_layers:
+                lfae_x = lfae(lfae_x)
+            x = lfae_x + x
         
         if self.gfae_depth > 0:
             if self.add_pos:
                 x = self.pos_embed_gfae(x)
             if self.learnable_pos:
                 x = x + self.pos_embed_gfae
-            for gfae in self.gfae_layers:
-                x = gfae(x)
+            if self.res_all:
+                for gfae in self.gfae_layers:
+                    x = gfae(x)
+            else:
+                gfae_x = x
+                for gfae in self.gfae_layers:
+                    gfae_x = gfae(gfae_x)
+                x = gfae_x + x
         return x
 
 
 class MixMobileNet(nn.Module):
+    """
+    Args:
+        variant (str): The variant of MixMobileNet architecture to use. Options are "XXS", "XS", "S".
+        img_size (int): The input image size (square image).
+        num_classes (int): The number of output classes.
+        train (bool): Whether the model is in training mode or not.
+        add_pos (bool): Whether to add positional encoding to the input.
+        learnable_pos (bool): Whether the positional encoding is learnable or not.
+        init_weights (bool): Whether to initialize the model weights.
+        drop_path (float): The probability of dropping a path in the DropPath operation.
+        dropout (float): The dropout rate.
+    """
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False,
-                 init_weights=False res_all=False, stem_spect=False, lfae_spect=False, drop_path=0.0, dropout=0.0):
+                 init_weights=False, res_all=True, stem_spect=False, lfae_spect=False, drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -443,7 +482,7 @@ class MixMobileNet(nn.Module):
         # self.img_size = math.floor(math.sqrt(img_size))
         self.img_size = img_size // 4
 
-        self.stem = Stem(input_channels=3, output_channels=config["channels"][0], stem_spect, img_size, img_size / 2 + 1)
+        self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
         self.stages = nn.ModuleList()
 
         # Instantiate stages with the configured number of channels and blocks
