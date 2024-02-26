@@ -7,13 +7,55 @@ import math
 import numpy as np
 
 
-class Stem(nn.Module):
-    def __init__(self, input_channels, output_channels):
+class Residual(nn.Module):
+    def __init__(self, fn1):
         super().__init__()
+        self.fn1 = fn1
+    def forward(self, x, **kwargs):
+        return self.fn1(x, **kwargs) + x
+
+class SpectralGatingNetwork(nn.Module):
+    def __init__(self, dim, h=14, w=8):
+        super().__init__()
+        self.complex_weight = nn.Parameter(torch.randn(h, w, dim, 2, dtype=torch.float32) * 0.02)
+        self.w = w
+        self.h = h
+
+    def forward(self, x, spatial_size=None):
+        B, C, H, W = x.shape
+        
+        if spatial_size is None:
+            a, b = H, W  # Directly using H and W as spatial dimensions
+        else:
+            a, b = spatial_size
+
+        x = x.permute(0, 2, 3, 1).contiguous()  # New shape B, H, W, C
+        
+        x = x.to(torch.float32)
+        
+        x = torch.fft.rfft2(x, dim=(1, 2), norm='ortho')
+        weight = torch.view_as_complex(self.complex_weight)
+        x = x * weight
+        x = torch.fft.irfft2(x, s=(a, b), dim=(1, 2), norm='ortho')
+        
+        # Before reshaping back, transpose x from B, H, W, C back to B, C, H, W
+        x = x.permute(0, 3, 1, 2).contiguous()  # Adjusted shape back to B, C, H, W
+        
+        return x
+
+
+class Stem(nn.Module):
+    def __init__(self, input_channels, output_channels, spect, h, w):
+        super().__init__()
+        self.spect = spect
+        if self.spect:
+            self.spectral = Residual(SpectralGatingNetwork(input_channels, h, w))
         self.conv = nn.Conv2d(input_channels, output_channels, kernel_size=4, stride=4)
         self.norm = nn.BatchNorm2d(output_channels)
 
     def forward(self, x):
+        if self.spect:
+            x = self.spectral(x)
         x = self.conv(x)
         x = self.norm(x)
         return x
@@ -188,6 +230,7 @@ class LFAEncoder(nn.Module):
         x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
         x = self.se(input + self.drop_path(x))
         return x
+
     
 class DownsampleLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=2, stride=2):
@@ -207,12 +250,6 @@ class DownsampleLayer(nn.Module):
             x = F.pad(x, (0, pad_width, 0, pad_height))
         return x
 
-class Residual(nn.Module):
-    def __init__(self, fn1):
-        super().__init__()
-        self.fn1 = fn1
-    def forward(self, x, **kwargs):
-        return self.fn1(x, **kwargs) + x
 
 class PositionalEncoding2D(nn.Module):
     def __init__(self, channels: int, max_size:  int = 100, dropout: float = 0.0):
@@ -284,7 +321,6 @@ class MixMobileBlock(nn.Module):
                 self.pos_embed_gfae = nn.Parameter(torch.zeros(1, out_channels, feat_size, feat_size))
                 self._trunc_normal_(self.pos_embed_gfae, std=.02)
 
-
         self.lfae_layers = nn.ModuleList([
             Residual(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path))
             for _ in range(lfae_depth)
@@ -324,7 +360,7 @@ class MixMobileBlock(nn.Module):
 
 class MixMobileNet(nn.Module):
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False,
-                 init_weights=False, drop_path=0.0, dropout=0.0):
+                 init_weights=False, spect=False, drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -372,7 +408,7 @@ class MixMobileNet(nn.Module):
         # self.img_size = math.floor(math.sqrt(img_size))
         self.img_size = img_size // 4
 
-        self.stem = Stem(input_channels=3, output_channels=config["channels"][0])
+        self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect, img_size, img_size / 2 + 1)
         self.stages = nn.ModuleList()
 
         # Instantiate stages with the configured number of channels and blocks
