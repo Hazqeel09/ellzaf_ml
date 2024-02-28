@@ -437,18 +437,20 @@ class MixMobileBlock(nn.Module):
                 x = gfae_x + x
         return x
 
-
 class MixMobileNet(nn.Module):
     """
     Args:
-        variant (str): The variant of MixMobileNet architecture to use. Options are "XXS", "XS", "S".
-        img_size (int): The input image size (square image).
+        variant (str): The variant of MixMobileNet architecture to use. Options: "XXS", "XS", "S", "SS", "M", "L".
+        img_size (int): The input image size.
         num_classes (int): The number of output classes.
         train (bool): Whether the model is in training mode or not.
         add_pos (bool): Whether to add positional encoding to the input.
         learnable_pos (bool): Whether the positional encoding is learnable or not.
-        init_weights (bool): Whether to initialize the model weights.
-        drop_path (float): The probability of dropping a path in the DropPath operation.
+        init_weights (bool): Whether to initialize the model weights or not.
+        res_all (bool): Whether to use residual connections in all blocks or not.
+        stem_spect (bool): Whether to use spectral in the stem block or not.
+        lfae_spect (bool): Whether to use spectral in the LFAE blocks or not.
+        drop_path (float): The drop path rate for stochastic depth regularization.
         dropout (float): The dropout rate.
     """
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False,
