@@ -344,6 +344,7 @@ class MixMobileBlock(nn.Module):
         self.spect_all = spect_all
 
         assert not (add_pos and learnable_pos), "add_pos and learnable_pos cannot both be True"
+        assert not (spect and spect_all), "lfae_spect and lfae_spect_all cannot both be True"
 
         if add_pos:
             self.pos_embed_lfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size, dropout=dropout)
