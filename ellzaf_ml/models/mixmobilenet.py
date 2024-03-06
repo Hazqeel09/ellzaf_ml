@@ -5,6 +5,12 @@ from torch import Tensor
 import torch.nn.functional as F
 import math
 import numpy as np
+from torch.backends.cuda import sdp_kernel, SDPBackend
+
+
+BACKEND_MAP = {
+    SDPBackend.FLASH_ATTENTION: {"enable_math": False, "enable_flash": True, "enable_mem_efficient": False},
+}
 
 
 class Residual(nn.Module):
@@ -92,19 +98,22 @@ class GFAEncoder(nn.Module):
         qkv_bias (bool, optional): Whether to include bias in the qkv linear layer. Defaults to True.
     """
 
-    def __init__(self, dim, drop_path=0.0, expan_ratio=4, n_heads=4, qkv_bias=True):
+    def __init__(self, dim, drop_path=0.0, expan_ratio=4, n_heads=4, use_flash=False, qkv_bias=True):
         super().__init__()
 
         self.n_heads = n_heads
+        self.use_flash = use_flash
 
+        self.dw = nn.Conv2d(dim, dim, kernel_size=3, padding=3 // 2, groups=dim)
         self.avgpool = nn.AvgPool2d(2, stride=2)
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
-        
-        self.temp = nn.Parameter(torch.ones(n_heads, 1, 1))
+
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.proj = nn.Linear(dim, dim)
-        self.dk_ratio = 0.2
-        self.dw = nn.Conv2d(dim, dim, kernel_size=3, padding=3 // 2, groups=dim)
+
+        if not self.use_flash:
+            self.temp = nn.Parameter(torch.ones(n_heads, 1, 1))
+            self.proj = nn.Linear(dim, dim)
+            self.dk_ratio = 0.2
         
         self.convtranspose2d = nn.ConvTranspose2d(dim, dim, 2, stride=2)
         self.norm2 = nn.LayerNorm(dim, eps=1e-6)
@@ -112,6 +121,16 @@ class GFAEncoder(nn.Module):
         self.act = nn.GELU()
         self.pw2 = nn.Linear(expan_ratio * dim, dim)
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
+
+    def flash_attn(self, q, k, v):
+        # implementation from https://pytorch.org/tutorials/intermediate/scaled_dot_product_attention_tutorial.html
+        with sdp_kernel(**BACKEND_MAP[SDPBackend.FLASH_ATTENTION]):
+            try:
+                attn = F.scaled_dot_product_attention(q, k, v)
+            except RuntimeError:
+                print("FlashAttention is not supported. See warnings for reasons.")
+
+        return attn
 
     def forward(self, x):
         input = x
@@ -122,16 +141,19 @@ class GFAEncoder(nn.Module):
         # Attention
         qkv = self.qkv(x).reshape(B, H * W, 3, self.n_heads, C // self.n_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
-        q = torch.nn.functional.normalize(qkv[0].transpose(-2, -1), dim=-1)
-        k = torch.nn.functional.normalize(qkv[1].transpose(-2, -1), dim=-1)
-        v = qkv[2].transpose(-2, -1)
+        if self.use_flash:
+            x = self.flash_attn(qkv[0], qkv[1], qkv[2]).reshape(B, H * W, C)
+        else:
+            q = torch.nn.functional.normalize(qkv[0].transpose(-2, -1), dim=-1)
+            k = torch.nn.functional.normalize(qkv[1].transpose(-2, -1), dim=-1)
+            v = qkv[2].transpose(-2, -1)
 
-        # DropKey
-        attn = (q @ k.transpose(-2, -1)) * self.temp
-        m_c = torch.ones_like(attn) * self.dk_ratio
-        attn = attn + torch.bernoulli(m_c) * -1e12
-        attn = attn.softmax(dim=-1)
-        x = self.proj((attn @ v).permute(0, 3, 1, 2).reshape(B, H * W, C))
+            # DropKey
+            attn = (q @ k.transpose(-2, -1)) * self.temp
+            m_c = torch.ones_like(attn) * self.dk_ratio
+            attn = attn + torch.bernoulli(m_c) * -1e12
+            attn = attn.softmax(dim=-1)
+            x = self.proj((attn @ v).permute(0, 3, 1, 2).reshape(B, H * W, C))
         x = (x + self.drop_path(x)).permute(0, 2, 1).reshape(B, C, H, W)
 
         # convtranspose
@@ -332,7 +354,7 @@ class MixMobileBlock(nn.Module):
         dropout (float, optional): Dropout probability for the positional encoding. Defaults to 0.0.
     """
     def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train, res_all,
-                spect, spect_all, add_pos, learnable_pos, drop_path=0.0, dropout=0.0):
+                spect, spect_all, use_flash, add_pos, learnable_pos, drop_path=0.0, dropout=0.0):
         super().__init__()
         self.downsample = DownsampleLayer(in_channels, out_channels)
         self.lfae_depth = lfae_depth
@@ -344,7 +366,6 @@ class MixMobileBlock(nn.Module):
         self.spect_all = spect_all
 
         assert not (add_pos and learnable_pos), "add_pos and learnable_pos cannot both be True"
-        assert not (spect and spect_all), "lfae_spect and lfae_spect_all cannot both be True"
 
         if add_pos:
             self.pos_embed_lfae = PositionalEncoding2D(channels=out_channels, max_size=feat_size, dropout=dropout)
@@ -393,12 +414,12 @@ class MixMobileBlock(nn.Module):
         if gfae_depth > 0:
             if res_all:
                 self.gfae_layers = nn.ModuleList([
-                    Residual(GFAEncoder(dim=out_channels, drop_path=drop_path))
+                    Residual(GFAEncoder(dim=out_channels, drop_path=drop_path, use_flash=use_flash))
                     for _ in range(gfae_depth)
                 ])
             else:
                 self.gfae_layers = nn.ModuleList([
-                    GFAEncoder(dim=out_channels, drop_path=drop_path) for _ in range(gfae_depth)
+                    GFAEncoder(dim=out_channels, drop_path=drop_path, use_flash=use_flash) for _ in range(gfae_depth)
                 ])
         else:
             self.gfae_layers = nn.Identity()
@@ -438,23 +459,21 @@ class MixMobileBlock(nn.Module):
                 x = gfae_x + x
         return x
 
+
 class MixMobileNet(nn.Module):
     """
     Args:
-        variant (str): The variant of MixMobileNet architecture to use. Options: "XXS", "XS", "S", "SS", "M", "L".
-        img_size (int): The input image size.
+        variant (str): The variant of MixMobileNet architecture to use. Options are "XXS", "XS", "S".
+        img_size (int): The input image size (square image).
         num_classes (int): The number of output classes.
         train (bool): Whether the model is in training mode or not.
         add_pos (bool): Whether to add positional encoding to the input.
         learnable_pos (bool): Whether the positional encoding is learnable or not.
-        init_weights (bool): Whether to initialize the model weights or not.
-        res_all (bool): Whether to use residual connections in all blocks or not.
-        stem_spect (bool): Whether to use spectral in the stem block or not.
-        lfae_spect (bool): Whether to use spectral in the LFAE blocks or not.
-        drop_path (float): The drop path rate for stochastic depth regularization.
+        init_weights (bool): Whether to initialize the model weights.
+        drop_path (float): The probability of dropping a path in the DropPath operation.
         dropout (float): The dropout rate.
     """
-    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False,
+    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
                  init_weights=False, res_all=True, stem_spect=False, lfae_spect=False, lfae_spect_all=False, drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
@@ -524,6 +543,7 @@ class MixMobileNet(nn.Module):
         self.num_features = config["channels"][-1]
         self.num_classes = num_classes
 
+        # self.img_size = math.floor(math.sqrt(img_size))
         self.img_size = img_size // 4
 
         self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
@@ -545,6 +565,7 @@ class MixMobileNet(nn.Module):
                 spect_all=lfae_spect_all,
                 add_pos=add_pos,
                 learnable_pos=learnable_pos,
+                use_flash=use_flash,
                 drop_path=drop_path,
                 dropout=dropout,
             )
