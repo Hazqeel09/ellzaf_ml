@@ -7,12 +7,11 @@ from timm.models.layers import DropPath
 from typing import List
 import sys
 import os
+from collections import namedtuple
+from packaging import version
 
 
-BACKEND_MAP = {
-    SDPBackend.FLASH_ATTENTION: {"enable_math": False, "enable_flash": True, "enable_mem_efficient": False},
-}
-
+Config = namedtuple('FlashAttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
 
 def get_conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation, groups, bias):
     if type(kernel_size) is int:
@@ -28,12 +27,46 @@ def get_conv2d(in_channels, out_channels, kernel_size, stride, padding, dilation
     else:
         return nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=kernel_size, stride=stride,
                          padding=padding, dilation=dilation, groups=groups, bias=bias)
+    
+class Attend(nn.Module):
+    def __init__(self, use_flash = False):
+        super().__init__()
+        assert not (use_flash and version.parse(torch.__version__) < version.parse('2.0.0')), 'in order to use flash attention, you must be using pytorch 2.0 or above'
+
+        # determine efficient attention configs for cuda and cpu
+
+        self.cpu_config = Config(True, True, True)
+        self.cuda_config = None
+
+        if not torch.cuda.is_available():
+            return
+
+        device_properties = torch.cuda.get_device_properties(torch.device('cuda'))
+
+        if device_properties.major == 8 and device_properties.minor == 0:
+            self.cuda_config = Config(True, False, False)
+        else:
+            self.cuda_config = Config(False, True, True)
+
+    def flash_attn(self, q, k, v):
+        config = self.cuda_config if q.is_cuda else self.cpu_config
+
+        # flash attention - https://arxiv.org/abs/2205.14135
+        
+        with torch.backends.cuda.sdp_kernel(**config._asdict()):
+            out = F.scaled_dot_product_attention(q, k, v)
+
+        return out
+
+    def forward(self, q, k, v):
+        return self.flash_attn(q, k, v)
 
 class FASA(nn.Module):
 
     def __init__(self, dim: int, kernel_size: int, num_heads: int, window_size: int, use_flash: bool = False):
         super().__init__()
         self.use_flash = use_flash
+        self.flash_attn = Attend(use_flash)
 
         self.q = nn.Conv2d(dim, dim, 1, 1, 0)
         self.kv = nn.Conv2d(dim, dim*2, 1, 1, 0)
@@ -58,16 +91,6 @@ class FASA(nn.Module):
                 block.add_module('linear{}'.format(num), nn.Conv2d(dim, dim, 1, 1, 0))
         return block
 
-    def flash_attn(self, q, k, v):
-        # implementation from https://pytorch.org/tutorials/intermediate/scaled_dot_product_attention_tutorial.html
-        with sdp_kernel(**BACKEND_MAP[SDPBackend.FLASH_ATTENTION]):
-            try:
-                attn = F.scaled_dot_product_attention(q, k, v)
-            except RuntimeError:
-                print("FlashAttention is not supported. See warnings for reasons.")
-
-        return attn
-
     def forward(self, x: torch.Tensor):
         '''
         x: (b c h w)
@@ -79,7 +102,7 @@ class FASA(nn.Module):
         q = q_local.reshape(b, -1, self.dim_head, h*w).transpose(-1, -2).contiguous() #(b m (h w) d)
         k, v = self.kv(self.pool(x)).reshape(b, 2, -1, self.dim_head, H*W).permute(1, 0, 2, 4, 3).contiguous() #(b m (H W) d)
         if self.use_flash:
-            global_feat = self.flash_attn(qkv[0], qkv[1], qkv[2]).reshape(B, H * W, C)
+            global_feat = self.flash_attn(q, k, v).reshape(b, H * W, c)
         else:
             attn = torch.softmax(self.scalor * q @ k.transpose(-1, -2), -1)
             global_feat = attn @ v #(b m (h w) d)

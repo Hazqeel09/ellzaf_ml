@@ -1,16 +1,13 @@
 import torch
 import torch.nn as nn
 from timm.models.layers import DropPath, trunc_normal_
-from torch import Tensor
 import torch.nn.functional as F
-import math
 import numpy as np
-from torch.backends.cuda import sdp_kernel, SDPBackend
+from collections import namedtuple
+from packaging import version
 
 
-BACKEND_MAP = {
-    SDPBackend.FLASH_ATTENTION: {"enable_math": False, "enable_flash": True, "enable_mem_efficient": False},
-}
+Config = namedtuple('FlashAttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
 
 
 class Residual(nn.Module):
@@ -82,6 +79,40 @@ class Stem(nn.Module):
         x = self.conv(x)
         x = self.norm(x)
         return x
+    
+
+class Attend(nn.Module):
+    def __init__(self, use_flash = False):
+        super().__init__()
+        assert not (use_flash and version.parse(torch.__version__) < version.parse('2.0.0')), 'in order to use flash attention, you must be using pytorch 2.0 or above'
+
+        # determine efficient attention configs for cuda and cpu
+
+        self.cpu_config = Config(True, True, True)
+        self.cuda_config = None
+
+        if not torch.cuda.is_available():
+            return
+
+        device_properties = torch.cuda.get_device_properties(torch.device('cuda'))
+
+        if device_properties.major == 8 and device_properties.minor == 0:
+            self.cuda_config = Config(True, False, False)
+        else:
+            self.cuda_config = Config(False, True, True)
+
+    def flash_attn(self, q, k, v):
+        config = self.cuda_config if q.is_cuda else self.cpu_config
+
+        # flash attention - https://arxiv.org/abs/2205.14135
+        
+        with torch.backends.cuda.sdp_kernel(**config._asdict()):
+            out = F.scaled_dot_product_attention(q, k, v)
+
+        return out
+
+    def forward(self, q, k, v):
+        return self.flash_attn(q, k, v)
 
 
 class GFAEncoder(nn.Module):
@@ -114,6 +145,8 @@ class GFAEncoder(nn.Module):
             self.temp = nn.Parameter(torch.ones(n_heads, 1, 1))
             self.proj = nn.Linear(dim, dim)
             self.dk_ratio = 0.2
+        else:
+            self.attend = Attend(use_flash)
         
         self.convtranspose2d = nn.ConvTranspose2d(dim, dim, 2, stride=2)
         self.norm2 = nn.LayerNorm(dim, eps=1e-6)
@@ -121,16 +154,6 @@ class GFAEncoder(nn.Module):
         self.act = nn.GELU()
         self.pw2 = nn.Linear(expan_ratio * dim, dim)
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
-
-    def flash_attn(self, q, k, v):
-        # implementation from https://pytorch.org/tutorials/intermediate/scaled_dot_product_attention_tutorial.html
-        with sdp_kernel(**BACKEND_MAP[SDPBackend.FLASH_ATTENTION]):
-            try:
-                attn = F.scaled_dot_product_attention(q, k, v)
-            except RuntimeError:
-                print("FlashAttention is not supported. See warnings for reasons.")
-
-        return attn
 
     def forward(self, x):
         input = x
@@ -142,7 +165,7 @@ class GFAEncoder(nn.Module):
         qkv = self.qkv(x).reshape(B, H * W, 3, self.n_heads, C // self.n_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
         if self.use_flash:
-            x = self.flash_attn(qkv[0], qkv[1], qkv[2]).reshape(B, H * W, C)
+            x = self.attend(qkv[0], qkv[1], qkv[2]).reshape(B, H * W, C)
         else:
             q = torch.nn.functional.normalize(qkv[0].transpose(-2, -1), dim=-1)
             k = torch.nn.functional.normalize(qkv[1].transpose(-2, -1), dim=-1)
