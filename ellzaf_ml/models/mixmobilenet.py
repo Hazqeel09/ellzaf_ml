@@ -9,6 +9,7 @@ from packaging import version
 
 Config = namedtuple('FlashAttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
 
+# helper class
 class DualFunc(nn.Module):
     def __init__(self, fn1, fn2):
         super().__init__()
@@ -16,6 +17,60 @@ class DualFunc(nn.Module):
         self.fn2 = fn2
     def forward(self, x, **kwargs):
         return self.fn2(self.fn1(x, **kwargs), **kwargs)
+
+# main class
+class Stem(nn.Module):
+    def __init__(self, input_channels, output_channels, spect, h, w):
+        super().__init__()
+        self.spect = spect
+        if self.spect:
+            self.pos_embed_spectral = nn.Parameter(torch.zeros(1, input_channels, h, h))
+            self._trunc_normal_(self.pos_embed_spectral, std=.02)
+            self.spectral = Residual(SpectralGatingNetwork(input_channels, h, w))
+        self.conv = nn.Conv2d(input_channels, output_channels, kernel_size=4, stride=4)
+        self.norm = nn.BatchNorm2d(output_channels)
+
+    def _trunc_normal_(self, tensor, mean=0., std=1.):
+        trunc_normal_(tensor, mean=mean, std=std)
+
+    def forward(self, x):
+        if self.spect:
+            x = self.spectral(x + self.pos_embed_spectral)
+        x = self.conv(x)
+        x = self.norm(x)
+        return x
+
+class BasicBlock(nn.Module):
+
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
+        super().__init__()
+        self.conv = nn.Sequential(
+                        nn.Conv2d(in_channels, out_channels, kernel_size, stride, kernel_size//2),
+                        nn.BatchNorm2d(out_channels),
+                        nn.ReLU()
+                    )
+    
+    def forward(self, x: torch.Tensor):
+        return self.conv(x)
+
+class PatchEmbedding(nn.Module):
+
+    def __init__(self, in_channels=3, out_channels=96):
+        super().__init__()
+        self.conv1 = BasicBlock(in_channels, out_channels//2, 3, 2)
+        self.conv2 = BasicBlock(out_channels//2, out_channels, 3, 2)
+        self.conv3 = BasicBlock(out_channels, out_channels, 3, 1)
+        self.conv4 = BasicBlock(out_channels, out_channels, 3, 1)
+        self.conv5 = nn.Conv2d(out_channels, out_channels, 1, 1, 0)
+        self.layernorm = nn.GroupNorm(1, out_channels)
+
+    def forward(self, x: torch.Tensor):
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        x = self.conv4(x)
+        x = self.conv5(x)
+        return self.layernorm(x)
 
 class SpectralGatingNetwork(nn.Module):
     def __init__(self, dim, h=14, w=8):
@@ -50,28 +105,6 @@ class SpectralGatingNetwork(nn.Module):
         x = x.permute(0, 3, 1, 2).contiguous()  # Adjusted shape back to B, C, H, W
         
         return x + input
-
-
-class Stem(nn.Module):
-    def __init__(self, input_channels, output_channels, spect, h, w):
-        super().__init__()
-        self.spect = spect
-        if self.spect:
-            self.pos_embed_spectral = nn.Parameter(torch.zeros(1, input_channels, h, h))
-            self._trunc_normal_(self.pos_embed_spectral, std=.02)
-            self.spectral = Residual(SpectralGatingNetwork(input_channels, h, w))
-        self.conv = nn.Conv2d(input_channels, output_channels, kernel_size=4, stride=4)
-        self.norm = nn.BatchNorm2d(output_channels)
-
-    def _trunc_normal_(self, tensor, mean=0., std=1.):
-        trunc_normal_(tensor, mean=mean, std=std)
-
-    def forward(self, x):
-        if self.spect:
-            x = self.spectral(x + self.pos_embed_spectral)
-        x = self.conv(x)
-        x = self.norm(x)
-        return x
     
 
 class Attend(nn.Module):
@@ -460,7 +493,7 @@ class MixMobileNet(nn.Module):
         dropout (float): The dropout rate.
     """
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
-                 init_weights=False, stem_spect=False, lfae_spect=False, lfae_spect_all=False, drop_path=0.0, dropout=0.0):
+                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -556,7 +589,10 @@ class MixMobileNet(nn.Module):
         # self.img_size = math.floor(math.sqrt(img_size))
         self.img_size = img_size // 4
 
-        self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
+        if not pe_stem:
+            self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
+        else:
+            self.stem = PatchEmbedding(in_channels=3,out_channels=config["channels"][0])
         self.stages = nn.ModuleList()
 
         # Instantiate stages with the configured number of channels and blocks
