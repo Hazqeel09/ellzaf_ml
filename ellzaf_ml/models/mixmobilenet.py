@@ -26,7 +26,7 @@ class Stem(nn.Module):
         if self.spect:
             self.pos_embed_spectral = nn.Parameter(torch.zeros(1, input_channels, h, h))
             self._trunc_normal_(self.pos_embed_spectral, std=.02)
-            self.spectral = Residual(SpectralGatingNetwork(input_channels, h, w))
+            self.spectral = SpectralGatingNetwork(input_channels, h, w)
         self.conv = nn.Conv2d(input_channels, output_channels, kernel_size=4, stride=4)
         self.norm = nn.BatchNorm2d(output_channels)
 
