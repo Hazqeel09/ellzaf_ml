@@ -59,31 +59,26 @@ class ConvBnAct(nn.Module):
         x = self.bn1(x)
         x = self.act1(x)
         return x
-    
+
 class ModifiedGDC(nn.Module):
-    def __init__(self, image_size, in_chs, num_classes, dropout, emb=512): #embedding = 512 from original code
+    def __init__(self, image_size, in_chs, num_classes, dropout, emb=512): # dropout implementation is in the original code but not in the paper
         super(ModifiedGDC, self).__init__()
-        self.dropout = dropout
-
-        self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=1,groups=in_chs, bias=False)
-        self.bn1 = nn.BatchNorm2d(in_chs)
-        self.conv = nn.Conv2d(in_chs, emb, kernel_size=1, bias=False)
-
+        
         if image_size % 32 == 0:
-            flattened_features = emb*((image_size//32)**2)
+            self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=((image_size//32)**2), groups=in_chs, bias=False)
         else:
-            flattened_features = emb*((image_size//32 + 1)**2)
-
-        self.bn2 = nn.BatchNorm1d(flattened_features)
+            self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=((image_size//32 + 1)**2), groups=in_chs, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_chs)
+        self.dropout = nn.Dropout(dropout)
+        self.conv = nn.Conv2d(in_chs, emb, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm1d(emb)
         self.linear = nn.Linear(flattened_features, num_classes) if num_classes else nn.Identity()
 
     def forward(self, x):
         x = self.conv_dw(x)
         x = self.bn1(x)
         x = self.conv(x)
-        x = x.view(x.size(0), -1) #flatten
-        if self.dropout > 0.:
-            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = x.view(x.size(0), -1) # Flatten
         x = self.bn2(x)
         x = self.linear(x)
         return x
@@ -179,7 +174,7 @@ class GhostBottleneck(nn.Module):
 
 
 class GhostFaceNetsV1(nn.Module):
-    def __init__(self, cfgs=None, image_size=256, num_classes=1000, width=1.0, dropout=0.2,
+    def __init__(self, cfgs=None, image_size=256, num_classes=0, width=1.0, dropout=0.2,
                  add_pointwise_conv=False, bn_momentum=0.9, bn_epsilon=1e-5, init_kaiming=True):
         super(GhostFaceNetsV1, self).__init__()
         # setting of inverted residual blocks
