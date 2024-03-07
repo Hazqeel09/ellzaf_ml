@@ -69,7 +69,7 @@ class ModifiedGDC(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.conv = nn.Conv2d(in_chs, emb, kernel_size=1, bias=False)
         self.bn2 = nn.BatchNorm1d(emb)
-        self.linear = nn.Linear(flattened_features, num_classes) if num_classes else nn.Identity()
+        self.linear = nn.Linear(emb, num_classes) if num_classes else nn.Identity()
 
     def forward(self, x):
         x = self.conv_dw(x)
