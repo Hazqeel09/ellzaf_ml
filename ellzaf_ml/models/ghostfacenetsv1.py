@@ -65,9 +65,9 @@ class ModifiedGDC(nn.Module):
         super(ModifiedGDC, self).__init__()
         
         if image_size % 32 == 0:
-            self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=((image_size//32)**2), groups=in_chs, bias=False)
+            self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=(image_size//32), groups=in_chs, bias=False)
         else:
-            self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=((image_size//32 + 1)**2), groups=in_chs, bias=False)
+            self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=(image_size//32 + 1), groups=in_chs, bias=False)
         self.bn1 = nn.BatchNorm2d(in_chs)
         self.dropout = nn.Dropout(dropout)
         self.conv = nn.Conv2d(in_chs, emb, kernel_size=1, bias=False)
