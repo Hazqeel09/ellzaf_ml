@@ -11,3 +11,4 @@ from .projectordistillation import (
 )
 from .vitspectralrope import ViTSpectralRoPE
 from .mixmobilenet import MixMobileNet
+from .bimixmobilenet import BiMixMobileNet
