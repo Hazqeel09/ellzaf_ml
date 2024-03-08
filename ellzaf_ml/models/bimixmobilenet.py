@@ -478,13 +478,6 @@ class BiMixMobileBlock(nn.Module):
             for gfae in self.gfae_layers:
                 gfae_x = gfae(gfae_x)
 
-            # local_weight = torch.sigmoid(lfae_x)
-            # local_feat = lfae_x * local_weight
-            # local2global = torch.sigmoid(gfae_x)
-            # global2local = torch.sigmoid(local_feat)
-            # local_feat = local_feat * local2global
-            # global_feat = gfae_x * global2local
-            # return self.mixer(local_feat * global_feat)
             local2global = torch.sigmoid(gfae_x)
             local_feat = lfae_x * local2global
             return self.mixer(local_feat * gfae_x)

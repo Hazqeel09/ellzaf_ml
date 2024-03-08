@@ -5,6 +5,7 @@ from timm.models.layers import trunc_normal_
 from .vitspectral import ViTSpectral
 from .vitspectralrope import ViTSpectralRoPE
 from .mixmobilenet import MixMobileNet
+from .bimixmobilenet import BiMixMobileNet
 
 
 class ViTSpectralForSimMIM(ViTSpectral):
@@ -87,6 +88,33 @@ class ViTSpectralRoPEForSimMIM(ViTSpectralRoPE):
         return x
     
 class MixMobileNetForSimMIM(MixMobileNet):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+        assert self.num_classes == 0
+
+        self.mask_token = nn.Parameter(torch.zeros(1, 3, 1, 1))
+        self._trunc_normal_(self.mask_token, std=0.02)
+
+    def _trunc_normal_(self, tensor, mean=0.0, std=1.0):
+        trunc_normal_(tensor, mean=mean, std=std, a=-std, b=std)
+
+    def forward(self, x, mask):
+        assert mask is not None
+        B, C, H, W = x.shape
+
+        # Resize mask to match the input dimensions
+        w = F.interpolate(mask.view(B, 1, 14, 14).float(), size=(H, W), mode='nearest')
+
+        mask_token = self.mask_token.expand(B, C, H, W)
+        x = x * (1 - w) + mask_token * w
+
+        x = self.stem(x)
+        for stage in self.stages:
+            x = stage(x)
+        return x
+    
+class BiMixMobileNetForSimMIM(BiMixMobileNet):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
