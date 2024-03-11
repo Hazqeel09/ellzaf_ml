@@ -478,6 +478,26 @@ class MixMobileBlock(nn.Module):
 
         return x
 
+class ModifiedGDC(nn.Module):
+    def __init__(self, image_size, in_chs, num_classes, dropout):
+        super(ModifiedGDC, self).__init__()
+
+        self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=image_size, groups=in_chs, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_chs)
+        self.dropout = nn.Dropout(dropout)
+        self.conv = nn.Conv2d(in_chs, in_chs, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm1d(in_chs)
+        self.linear = nn.Linear(in_chs, num_classes) if num_classes else nn.Identity()
+
+    def forward(self, x):
+        x = self.conv_dw(x)
+        x = self.bn1(x)
+        x = self.conv(x)
+        x = x.view(x.size(0), -1) # Flatten
+        x = self.bn2(x)
+        x = self.linear(x)
+        return x
+
 
 class MixMobileNet(nn.Module):
     """
@@ -493,7 +513,8 @@ class MixMobileNet(nn.Module):
         dropout (float): The dropout rate.
     """
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
-                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, drop_path=0.0, dropout=0.0):
+                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, mdgc=False,
+                 drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -620,11 +641,14 @@ class MixMobileNet(nn.Module):
             self.img_size = (self.img_size  // 2) + (1 if (self.img_size  // 2) % 2 != 0 else 0)
 
         if num_classes > 0:
-            self.head = nn.Sequential(
-                nn.AdaptiveAvgPool2d(1),
-                nn.Flatten(),
-                nn.Linear(in_channels, num_classes)
-            )
+            if not mdgc:
+                self.head = nn.Sequential(
+                    nn.AdaptiveAvgPool2d(1),
+                    nn.Flatten(),
+                    nn.Linear(in_channels, num_classes)
+                )
+            else:
+                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
         else:
             self.head = nn.Identity()
 
