@@ -34,26 +34,29 @@ class MaskGenerator:
 def convert_to_rgb(img):
     return img.convert('RGB') if img.mode != 'RGB' else img
 
+def custom_resize_crop(img, target_size=224):
+    # Check if the image is smaller than the target size
+    if img.size[0] < target_size or img.size[1] < target_size:
+        img = T.Resize((target_size, target_size))(img)
+    # If the image is larger than the target size, apply center crop
+    elif img.size[0] > target_size or img.size[1] > target_size:
+        img = T.CenterCrop(target_size)(img)
+    return img
+
 class SimMIMTransform:
     def __init__(self, flipped=False):
-        if not flipped:
-            self.transform_img = T.Compose([
-                T.Lambda(convert_to_rgb),
-                T.Resize(224),
-                T.CenterCrop(224),
-                T.ToTensor(),
-                T.Normalize(mean=torch.tensor(IMAGENET_DEFAULT_MEAN),std=torch.tensor(IMAGENET_DEFAULT_STD)),
-            ])
-        else:
-            self.transform_img = T.Compose([
-                T.Lambda(convert_to_rgb),
-                T.Resize(224),
-                T.CenterCrop(224),
-                T.RandomHorizontalFlip(p=1),
-                T.ToTensor(),
-                T.Normalize(mean=torch.tensor(IMAGENET_DEFAULT_MEAN),std=torch.tensor(IMAGENET_DEFAULT_STD)),
-            ])
-            
+        transforms_list = [
+            T.Lambda(convert_to_rgb),
+            T.Lambda(lambda img: custom_resize_crop(img)),
+            T.ToTensor(),
+            T.Normalize(mean=torch.tensor(IMAGENET_DEFAULT_MEAN), std=torch.tensor(IMAGENET_DEFAULT_STD)),
+        ]
+        
+        # If flipping is enabled, add the flip transform
+        if flipped:
+            transforms_list.insert(-2, T.RandomHorizontalFlip(p=1))  # Insert before ToTensor
+        
+        self.transform_img = T.Compose(transforms_list)
 
         model_patch_size=16
         
