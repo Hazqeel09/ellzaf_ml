@@ -481,13 +481,14 @@ class MixMobileBlock(nn.Module):
 class ModifiedGDC(nn.Module):
     def __init__(self, image_size, in_chs, num_classes, dropout):
         super(ModifiedGDC, self).__init__()
+        self.out_chs = in_chs*2
 
         self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=image_size, groups=in_chs, bias=False)
         self.bn1 = nn.BatchNorm2d(in_chs)
         self.dropout = nn.Dropout(dropout)
-        self.conv = nn.Conv2d(in_chs, in_chs, kernel_size=1, bias=False)
-        self.bn2 = nn.BatchNorm1d(in_chs)
-        self.linear = nn.Linear(in_chs, num_classes) if num_classes else nn.Identity()
+        self.conv = nn.Conv2d(in_chs, self.out_chs, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm1d(self.out_chs)
+        self.linear = nn.Linear(self.out_chs, num_classes) if num_classes else nn.Identity()
 
     def forward(self, x):
         x = self.conv_dw(x)

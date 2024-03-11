@@ -403,7 +403,7 @@ class BiMixMobileBlock(nn.Module):
         dropout (float, optional): Dropout probability for the positional encoding. Defaults to 0.0.
     """
     def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train,
-                spect, spect_all, n_heads, use_flash, add_pos, learnable_pos, drop_path=0.0, dropout=0.0):
+                spect, spect_all, n_heads, use_flash, add_pos, learnable_pos, full, drop_path=0.0, dropout=0.0):
         super().__init__()
         self.downsample = DownsampleLayer(in_channels, out_channels)
         self.lfae_depth = lfae_depth
@@ -412,6 +412,7 @@ class BiMixMobileBlock(nn.Module):
         self.learnable_pos = learnable_pos
         self.spect = spect
         self.spect_all = spect_all
+        self.full = full
 
         assert not (add_pos and learnable_pos), "add_pos and learnable_pos cannot both be True"
 
@@ -478,11 +479,39 @@ class BiMixMobileBlock(nn.Module):
             for gfae in self.gfae_layers:
                 gfae_x = gfae(gfae_x)
 
-            local2global = torch.sigmoid(gfae_x)
-            local_feat = lfae_x * local2global
-            return self.mixer(local_feat * gfae_x)
-
+            if self.full:
+                local2global = torch.sigmoid(gfae_x)
+                global2local = torch.sigmoid(lfae_x)
+                local_feat = lfae_x * local2global
+                global_feat = gfae_x * global2local
+                return self.mixer(local_feat * global_feat)
+            else:
+                local2global = torch.sigmoid(gfae_x)
+                local_feat = lfae_x * local2global
+                return self.mixer(local_feat * gfae_x)
+        
         return lfae_x
+    
+class ModifiedGDC(nn.Module):
+    def __init__(self, image_size, in_chs, num_classes, dropout):
+        super(ModifiedGDC, self).__init__()
+        self.out_chs = in_chs*2
+
+        self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=image_size, groups=in_chs, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_chs)
+        self.dropout = nn.Dropout(dropout)
+        self.conv = nn.Conv2d(in_chs, self.out_chs, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm1d(self.out_chs)
+        self.linear = nn.Linear(self.out_chs, num_classes) if num_classes else nn.Identity()
+
+    def forward(self, x):
+        x = self.conv_dw(x)
+        x = self.bn1(x)
+        x = self.conv(x)
+        x = x.view(x.size(0), -1) # Flatten
+        x = self.bn2(x)
+        x = self.linear(x)
+        return x
 
 
 class BiMixMobileNet(nn.Module):
@@ -499,7 +528,8 @@ class BiMixMobileNet(nn.Module):
         dropout (float): The dropout rate.
     """
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
-                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, drop_path=0.0, dropout=0.0):
+                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, full=False, mdgc=False,
+                 drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -618,6 +648,7 @@ class BiMixMobileNet(nn.Module):
                 add_pos=add_pos,
                 learnable_pos=learnable_pos,
                 use_flash=use_flash,
+                full=full,
                 drop_path=drop_path,
                 dropout=dropout,
             )
@@ -626,13 +657,19 @@ class BiMixMobileNet(nn.Module):
             self.img_size = (self.img_size  // 2) + (1 if (self.img_size  // 2) % 2 != 0 else 0)
 
         if num_classes > 0:
-            self.head = nn.Sequential(
-                nn.AdaptiveAvgPool2d(1),
-                nn.Flatten(),
-                nn.Linear(in_channels, num_classes)
-            )
+            if not mdgc:
+                self.head = nn.Sequential(
+                    nn.AdaptiveAvgPool2d(1),
+                    nn.Flatten(),
+                    nn.Linear(in_channels, num_classes)
+                )
+            else:
+                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
         else:
-            self.head = nn.Identity()
+            if not mdgc:
+                self.head = nn.Identity()
+            else:
+                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
 
         if init_weights:
             self.apply(self._init_weights)
