@@ -650,7 +650,10 @@ class MixMobileNet(nn.Module):
             else:
                 self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
         else:
-            self.head = nn.Identity()
+            if not mdgc:
+                self.head = nn.Identity()
+            else:
+                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
 
         if init_weights:
             self.apply(self._init_weights)
