@@ -74,6 +74,7 @@ class ModifiedGDC(nn.Module):
     def forward(self, x):
         x = self.conv_dw(x)
         x = self.bn1(x)
+        x = self.dropout(x)
         x = self.conv(x)
         x = x.view(x.size(0), -1) # Flatten
         x = self.bn2(x)
