@@ -55,8 +55,13 @@ class BasicBlock(nn.Module):
 
 class PatchEmbedding(nn.Module):
 
-    def __init__(self, in_channels=3, out_channels=96):
+    def __init__(self, in_channels=3, out_channels=96, h=14, w=8, spect=False):
         super().__init__()
+        self.spect = spect
+        if self.spect:
+            self.pos_embed_spectral = nn.Parameter(torch.zeros(1, in_channels, h, h))
+            self._trunc_normal_(self.pos_embed_spectral, std=.02)
+            self.spectral = SpectralGatingNetwork(in_channels, h, w)
         self.conv1 = BasicBlock(in_channels, out_channels//2, 3, 2)
         self.conv2 = BasicBlock(out_channels//2, out_channels, 3, 2)
         self.conv3 = BasicBlock(out_channels, out_channels, 3, 1)
@@ -64,7 +69,12 @@ class PatchEmbedding(nn.Module):
         self.conv5 = nn.Conv2d(out_channels, out_channels, 1, 1, 0)
         self.layernorm = nn.GroupNorm(1, out_channels)
 
+    def _trunc_normal_(self, tensor, mean=0., std=1.):
+        trunc_normal_(tensor, mean=mean, std=std)
+
     def forward(self, x: torch.Tensor):
+        if self.spect:
+            x = self.spectral(x + self.pos_embed_spectral)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
@@ -635,7 +645,7 @@ class BiMixMobileNet(nn.Module):
         if not pe_stem:
             self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
         else:
-            self.stem = PatchEmbedding(in_channels=3,out_channels=config["channels"][0])
+            self.stem = PatchEmbedding(in_channels=3,out_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
         self.stages = nn.ModuleList()
 
         # Instantiate stages with the configured number of channels and blocks
