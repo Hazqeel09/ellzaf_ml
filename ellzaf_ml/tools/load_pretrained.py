@@ -16,8 +16,8 @@ def load_pretrained(model, path, distil=False, not_vit=False):
     else:
         print('Detect non-pre-trained model, pass without doing anything.')
 
-    print(f">>>>>>>>>> Remapping pre-trained keys for VIT ..........")
     if not not_vit:
+        print(f">>>>>>>>>> Remapping pre-trained keys for VIT ..........")
         if not distil:
             checkpoint = remap_pretrained_keys_vit(model, checkpoint_model)
         else:
