@@ -155,14 +155,18 @@ class GFAEncoder(nn.Module):
         qkv_bias (bool, optional): Whether to include bias in the qkv linear layer. Defaults to True.
     """
 
-    def __init__(self, dim, drop_path=0.0, expan_ratio=4, n_heads=4, use_flash=False, qkv_bias=True):
+    def __init__(self, dim, drop_path=0.0, expan_ratio=4, dk_ratio=0.2, n_heads=4, use_flash=False, avgpool=True, qkv_bias=True):
         super().__init__()
 
         self.n_heads = n_heads
         self.use_flash = use_flash
+        self.avgpool = avgpool
 
         self.dw = nn.Conv2d(dim, dim, kernel_size=3, padding=3 // 2, groups=dim)
-        self.avgpool = nn.AvgPool2d(2, stride=2)
+        if self.avgpool:
+            self.pool = nn.AvgPool2d(2, stride=2)
+        else:
+            self.pool = nn.Conv2d(dim, dim, kernel_size=3, padding=1, groups=dim, stride=2)
         self.norm1 = nn.LayerNorm(dim, eps=1e-6)
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
@@ -170,7 +174,7 @@ class GFAEncoder(nn.Module):
         if not self.use_flash:
             self.temp = nn.Parameter(torch.ones(n_heads, 1, 1))
             self.proj = nn.Linear(dim, dim)
-            self.dk_ratio = 0.2
+            self.dk_ratio = dk_ratio
         else:
             self.attend = Attend(use_flash)
         
@@ -183,7 +187,7 @@ class GFAEncoder(nn.Module):
 
     def forward(self, x):
         input = x
-        x = self.avgpool(self.dw(x) + input)
+        x = self.pool(self.dw(x) + input)
         B, C, H, W = x.shape
         x = self.norm1(x.reshape(B, C, H * W).permute(0, 2, 1))
 
@@ -403,7 +407,7 @@ class MixMobileBlock(nn.Module):
         dropout (float, optional): Dropout probability for the positional encoding. Defaults to 0.0.
     """
     def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train,
-                spect, spect_all, n_heads, use_flash, add_pos, learnable_pos, drop_path=0.0, dropout=0.0):
+                spect, spect_all,  dk_ratio, n_heads, use_flash, avgpool, add_pos, learnable_pos, drop_path=0.0, dropout=0.0):
         super().__init__()
         self.downsample = DownsampleLayer(in_channels, out_channels)
         self.lfae_depth = lfae_depth
@@ -449,7 +453,8 @@ class MixMobileBlock(nn.Module):
         
         if gfae_depth > 0:
             self.gfae_layers = nn.ModuleList([
-                GFAEncoder(dim=out_channels, drop_path=drop_path, n_heads=n_heads, use_flash=use_flash) for _ in range(gfae_depth)
+                GFAEncoder(dim=out_channels, drop_path=drop_path, dk_ratio=dk_ratio, n_heads=n_heads, use_flash=use_flash, avgpool=avgpool)
+                for _ in range(gfae_depth)
             ])
         else:
             self.gfae_layers = nn.Identity()
@@ -517,7 +522,7 @@ class MixMobileNet(nn.Module):
     """
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
                  init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, mdgc=False,
-                 drop_path=0.0, dropout=0.0):
+                 avgpool=True, dk_ratio=0.2, drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
         configs = {
@@ -632,10 +637,12 @@ class MixMobileNet(nn.Module):
                 train=train,
                 spect=lfae_spect,
                 spect_all=lfae_spect_all,
+                dk_ratio=dk_ratio,
                 n_heads=config["n_heads"][i],
                 add_pos=add_pos,
                 learnable_pos=learnable_pos,
                 use_flash=use_flash,
+                avgpool=avgpool,
                 drop_path=drop_path,
                 dropout=dropout,
             )
