@@ -38,11 +38,17 @@ def get_pretrain_param_groups(model, skip_list=(), skip_keywords=()):
             {'params': no_decay, 'weight_decay': 0.}]
 
 
-def build_finetune_optimizer(model,lr, distil=False):
+def build_finetune_optimizer(model,lr, distil=False, vit=True):
     print('>>>>>>>>>> Build Optimizer for Fine-tuning Stage')
-    num_layers = 12
+    if vit:
+        num_layers = 12
+    else:
+        num_layers = 4
     if not distil:
-        get_layer_func = partial(get_vit_layer_distil, num_layers=num_layers + 2)
+        if vit:
+            get_layer_func = partial(get_vit_layer_distil, num_layers=num_layers + 2)
+        else:
+            get_layer_func = partial(get_mmn_layer, num_layers=num_layers + 2)
     else:
         get_layer_func = partial(get_vit_layer, num_layers=num_layers + 2)
     
@@ -63,10 +69,17 @@ def build_finetune_optimizer(model,lr, distil=False):
     optimizer = optim.AdamW(parameters, eps=1e-8, betas=(0.9, 0.999),
                                 lr=lr, weight_decay=0.05)
 
-    print(optimizer)
     return optimizer
 
-
+def get_mmn_layer(name, num_layers):
+    if name.startswith("stages"):
+        layer_id = int(name.split('.')[1])
+        return layer_id + 1
+    elif name.startswith("stem"):
+        return 0
+    else:
+        return num_layers - 1
+        
 def get_vit_layer(name, num_layers):
     if name in ("cls_token", "mask_token", "pos_embed"):
         return 0
