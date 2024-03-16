@@ -9,16 +9,15 @@ from packaging import version
 
 Config = namedtuple('FlashAttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
 
-# helper class
 class DualFunc(nn.Module):
     def __init__(self, fn1, fn2):
         super().__init__()
         self.fn1 = fn1
         self.fn2 = fn2
     def forward(self, x, **kwargs):
-        return self.fn2(self.fn1(x, **kwargs), **kwargs)
+        return self.fn2(self.fn1(x, **kwargs), **kwargs) + x
 
-# main class
+
 class Stem(nn.Module):
     def __init__(self, input_channels, output_channels, spect, h, w):
         super().__init__()
@@ -41,7 +40,6 @@ class Stem(nn.Module):
         return x
 
 class BasicBlock(nn.Module):
-
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
         super().__init__()
         self.conv = nn.Sequential(
@@ -54,7 +52,6 @@ class BasicBlock(nn.Module):
         return self.conv(x)
 
 class PatchEmbedding(nn.Module):
-
     def __init__(self, in_channels=3, out_channels=96):
         super().__init__()
         self.conv1 = BasicBlock(in_channels, out_channels//2, 3, 2)
@@ -84,8 +81,7 @@ class SpectralGatingNetwork(nn.Module):
         trunc_normal_(tensor, mean=mean, std=std)
 
     def forward(self, x, spatial_size=None):
-        input = x
-        B, C, H, W = x.shape
+        _, _, H, W = x.shape
         
         if spatial_size is None:
             a, b = H, W  # Directly using H and W as spatial dimensions
@@ -104,7 +100,7 @@ class SpectralGatingNetwork(nn.Module):
         # Before reshaping back, transpose x from B, H, W, C back to B, C, H, W
         x = x.permute(0, 3, 1, 2).contiguous()  # Adjusted shape back to B, C, H, W
         
-        return x + input
+        return x
     
 
 class Attend(nn.Module):
@@ -142,27 +138,14 @@ class Attend(nn.Module):
 
 
 class GFAEncoder(nn.Module):
-    """
-    GFAEncoder class represents the encoder module of the GFA (Global Feature Aggregation) network.
-    It applies a series of operations including normalization, attention, convolution, and MLP to the input tensor.
-
-    Args:
-        dim (int): The input dimension of the tensor.
-        feat_size (int): The size of the input feature map.
-        drop_path (float, optional): The dropout probability for the DropPath operation. Defaults to 0.0.
-        expan_ratio (int, optional): The expansion ratio for the pointwise convolutions. Defaults to 4.
-        n_heads (int, optional): The number of attention heads. Defaults to 4.
-        qkv_bias (bool, optional): Whether to include bias in the qkv linear layer. Defaults to True.
-    """
-
-    def __init__(self, dim, drop_path=0.0, expan_ratio=4, dk_ratio=0.2, n_heads=4, use_flash=False, avgpool=True, qkv_bias=True):
+    def __init__(self, dim, dropout=0.0,drop_path=0.0, expan_ratio=4, dk_ratio=0.2, n_heads=4, use_flash=False, avgpool=True, qkv_bias=True):
         super().__init__()
 
         self.n_heads = n_heads
         self.use_flash = use_flash
         self.avgpool = avgpool
 
-        self.dw = nn.Conv2d(dim, dim, kernel_size=3, padding=3 // 2, groups=dim)
+        self.dw = nn.Conv2d(dim, dim, kernel_size=3, padding=1, groups=dim)
         if self.avgpool:
             self.pool = nn.AvgPool2d(2, stride=2)
         else:
@@ -175,6 +158,7 @@ class GFAEncoder(nn.Module):
             self.temp = nn.Parameter(torch.ones(n_heads, 1, 1))
             self.proj = nn.Linear(dim, dim)
             self.dk_ratio = dk_ratio
+            self.dropout1 = nn.Dropout(p=dropout)
         else:
             self.attend = Attend(use_flash)
         
@@ -182,6 +166,7 @@ class GFAEncoder(nn.Module):
         self.norm2 = nn.LayerNorm(dim, eps=1e-6)
         self.pw1 = nn.Linear(dim, expan_ratio * dim)  # pointwise/1x1 convs
         self.act = nn.GELU()
+        self.dropout2 = nn.Dropout(p=dropout)
         self.pw2 = nn.Linear(expan_ratio * dim, dim)
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
@@ -206,14 +191,16 @@ class GFAEncoder(nn.Module):
             m_c = torch.ones_like(attn) * self.dk_ratio
             attn = attn + torch.bernoulli(m_c) * -1e12
             attn = attn.softmax(dim=-1)
-            x = self.proj((attn @ v).permute(0, 3, 1, 2).reshape(B, H * W, C))
-        x = (x + self.drop_path(x)).permute(0, 2, 1).reshape(B, C, H, W)
+            attn = self.proj((attn @ v).permute(0, 3, 1, 2).reshape(B, H * W, C))
+            attn = self.dropout1(attn)
+
+        x = (x + self.drop_path(attn)).permute(0, 2, 1).reshape(B, C, H, W)
 
         # convtranspose
         x = self.convtranspose2d(x).permute(0, 2, 3, 1)
 
         # MLP
-        x = self.pw2(self.act(self.pw1(self.norm2(x)))).permute(0, 3, 1, 2)
+        x = self.pw2(self.dropout2(self.act(self.pw1(self.norm2(x))))).permute(0, 3, 1, 2)
         x = input + self.drop_path(x)
         return x
 
@@ -282,20 +269,9 @@ class SE_Module(nn.Module):
 
 
 class LFAEncoder(nn.Module):
-    """
-    LFAEncoder is a module that performs encoding using a combination of depthwise convolution, pointwise convolution,
-    layer normalization, GELU activation, and squeeze-and-excitation module.
-
-    Args:
-        dim (int): The number of input channels.
-        drop_path (float, optional): The probability of dropping a path during training. Defaults to 0.0.
-        expan_ratio (float, optional): The expansion ratio for the pointwise convolution. Defaults to 4.0.
-        train (bool, optional): Whether the module is in training mode or not. Defaults to True.
-        kernel_s (int, optional): The kernel size for the pointwise convolution. Defaults to 7.
-    """
-
-    def __init__(self, dim, drop_path=0.0, expan_ratio=4.0, train=True, kernel_s=7):
+    def __init__(self, dim, dropout=0.0, drop_path=0.0, expan_ratio=4.0, train=True, kernel_s=7, spect=False):
         super().__init__()
+        self.spect = spect
         self.dwconv1 = nn.Conv2d(dim, dim, kernel_size=3, padding=3 // 2, groups=dim)
         
         if train:
@@ -310,6 +286,7 @@ class LFAEncoder(nn.Module):
         self.norm = nn.LayerNorm(dim, eps=1e-6)
         self.pwconv1 = nn.Linear(dim, int(expan_ratio * dim))
         self.act = nn.GELU()
+        self.dropout = nn.Dropout(p=dropout)
         self.pwconv2 = nn.Linear(int(expan_ratio * dim), dim)
         self.se = SE_Module(channel=dim, reduction=16)
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
@@ -318,9 +295,11 @@ class LFAEncoder(nn.Module):
         input = x
         x = self.dwconv2(self.dwconv1(x) + input)
         x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
-        x = self.pwconv2(self.act(self.pwconv1(self.norm(x))))
+        x = self.pwconv2(self.dropout(self.act(self.pwconv1(self.norm(x)))))
         x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
         x = self.se(input + self.drop_path(x))
+        if self.spect:
+            return x
         return x + input
 
     
@@ -390,22 +369,6 @@ class PositionalEncoding2D(nn.Module):
 
 
 class MixMobileBlock(nn.Module):
-    """
-    MixMobileBlock is a module that represents a block in the MixMobileNet architecture.
-
-    Args:
-        in_channels (int): Number of input channels.
-        out_channels (int): Number of output channels.
-        lfae_depth (int): Depth of the LFAEncoder layers.
-        lfae_kernel_size (int): Kernel size of the LFAEncoder layers.
-        gfae_depth (int): Depth of the GFAEncoder layers.
-        feat_size (int): Size of the feature map.
-        train (bool): Whether the module is in training mode or not.
-        add_pos (bool): Whether to add positional encoding to the input.
-        learnable_pos (bool): Whether to use learnable positional encoding.
-        drop_path (float, optional): Dropout probability for the drop path regularization. Defaults to 0.0.
-        dropout (float, optional): Dropout probability for the positional encoding. Defaults to 0.0.
-    """
     def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train,
                 spect, spect_all,  dk_ratio, n_heads, use_flash, avgpool, add_pos, learnable_pos, drop_path=0.0, dropout=0.0):
         super().__init__()
@@ -433,7 +396,7 @@ class MixMobileBlock(nn.Module):
 
         if not self.spect and not self.spect_all:
             self.lfae_layers = nn.ModuleList([
-                LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path)
+                LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, dropout=dropout, drop_path=drop_path)
                 for _ in range(lfae_depth)
             ])
         if self.spect_all:
@@ -442,19 +405,21 @@ class MixMobileBlock(nn.Module):
                     self.lfae_layers.append(
                         DualFunc(
                             SpectralGatingNetwork(out_channels, feat_size, feat_size / 2 + 1),
-                            LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path),
+                            LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train,
+                                       dropout=dropout, drop_path=drop_path, spect=True),
                         )
                     )
         if self.spect:
             self.lfae_layers = nn.ModuleList([SpectralGatingNetwork(out_channels, feat_size, feat_size / 2 + 1)])
             for _ in range(lfae_depth):
-                self.lfae_layers.append(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train, drop_path=drop_path)
+                self.lfae_layers.append(LFAEncoder(dim=out_channels, kernel_s=lfae_kernel_size, train=train,
+                                                   dropout=dropout, drop_path=drop_path, spect=True)
                 )
         
         if gfae_depth > 0:
             self.gfae_layers = nn.ModuleList([
-                GFAEncoder(dim=out_channels, drop_path=drop_path, dk_ratio=dk_ratio, n_heads=n_heads, use_flash=use_flash, avgpool=avgpool)
-                for _ in range(gfae_depth)
+                GFAEncoder(dim=out_channels, dropout=dropout, drop_path=drop_path, dk_ratio=dk_ratio, n_heads=n_heads, use_flash=use_flash,
+                           avgpool=avgpool) for _ in range(gfae_depth)
             ])
         else:
             self.gfae_layers = nn.Identity()
@@ -508,18 +473,6 @@ class ModifiedGDC(nn.Module):
 
 
 class MixMobileNet(nn.Module):
-    """
-    Args:
-        variant (str): The variant of MixMobileNet architecture to use. Options are "XXS", "XS", "S".
-        img_size (int): The input image size (square image).
-        num_classes (int): The number of output classes.
-        train (bool): Whether the model is in training mode or not.
-        add_pos (bool): Whether to add positional encoding to the input.
-        learnable_pos (bool): Whether the positional encoding is learnable or not.
-        init_weights (bool): Whether to initialize the model weights.
-        drop_path (float): The probability of dropping a path in the DropPath operation.
-        dropout (float): The dropout rate.
-    """
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
                  init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, mdgc=False,
                  avgpool=True, dk_ratio=0.2, drop_path=0.0, dropout=0.0):
@@ -615,7 +568,6 @@ class MixMobileNet(nn.Module):
         self.num_features = config["channels"][-1]
         self.num_classes = num_classes
 
-        # self.img_size = math.floor(math.sqrt(img_size))
         self.img_size = img_size // 4
 
         if not pe_stem:
