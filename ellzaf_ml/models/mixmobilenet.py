@@ -437,7 +437,8 @@ class MixMobileBlock(nn.Module):
         else:
             self.gfae_layers = nn.Identity()
 
-        self.mixer = nn.Conv2d(out_channels, out_channels, 1, 1, 0)
+        if self.fullbi or self.partbi:
+            self.mixer = nn.Conv2d(out_channels, out_channels, 1, 1, 0)
     
     def _trunc_normal_(self, tensor, mean=0., std=1.):
         trunc_normal_(tensor, mean=mean, std=std)
