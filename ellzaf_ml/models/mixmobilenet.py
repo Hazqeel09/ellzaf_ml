@@ -9,6 +9,7 @@ from packaging import version
 
 Config = namedtuple('FlashAttentionConfig', ['enable_flash', 'enable_math', 'enable_mem_efficient'])
 
+
 class DualFunc(nn.Module):
     def __init__(self, fn1, fn2):
         super().__init__()
@@ -52,8 +53,13 @@ class BasicBlock(nn.Module):
         return self.conv(x)
 
 class PatchEmbedding(nn.Module):
-    def __init__(self, in_channels=3, out_channels=96):
+    def __init__(self, in_channels=3, out_channels=96, h=14, w=8, spect=False):
         super().__init__()
+        self.spect = spect
+        if self.spect:
+            self.pos_embed_spectral = nn.Parameter(torch.zeros(1, in_channels, h, h))
+            self._trunc_normal_(self.pos_embed_spectral, std=.02)
+            self.spectral = SpectralGatingNetwork(in_channels, h, w)
         self.conv1 = BasicBlock(in_channels, out_channels//2, 3, 2)
         self.conv2 = BasicBlock(out_channels//2, out_channels, 3, 2)
         self.conv3 = BasicBlock(out_channels, out_channels, 3, 1)
@@ -61,7 +67,12 @@ class PatchEmbedding(nn.Module):
         self.conv5 = nn.Conv2d(out_channels, out_channels, 1, 1, 0)
         self.layernorm = nn.GroupNorm(1, out_channels)
 
+    def _trunc_normal_(self, tensor, mean=0., std=1.):
+        trunc_normal_(tensor, mean=mean, std=std)
+
     def forward(self, x: torch.Tensor):
+        if self.spect:
+            x = self.spectral(x + self.pos_embed_spectral)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x)
@@ -370,7 +381,7 @@ class PositionalEncoding2D(nn.Module):
 
 class MixMobileBlock(nn.Module):
     def __init__(self, in_channels, out_channels, lfae_depth, lfae_kernel_size, gfae_depth, feat_size, train,
-                spect, spect_all,  dk_ratio, n_heads, use_flash, avgpool, add_pos, learnable_pos, drop_path=0.0, dropout=0.0):
+                spect, spect_all, dk_ratio, n_heads, use_flash, avgpool, add_pos, learnable_pos, partbi, fullbi, drop_path=0.0, dropout=0.0):
         super().__init__()
         self.downsample = DownsampleLayer(in_channels, out_channels)
         self.lfae_depth = lfae_depth
@@ -379,6 +390,8 @@ class MixMobileBlock(nn.Module):
         self.learnable_pos = learnable_pos
         self.spect = spect
         self.spect_all = spect_all
+        self.partbi = partbi
+        self.fullbi = fullbi
 
         assert not (add_pos and learnable_pos), "add_pos and learnable_pos cannot both be True"
 
@@ -423,6 +436,8 @@ class MixMobileBlock(nn.Module):
             ])
         else:
             self.gfae_layers = nn.Identity()
+
+        self.mixer = nn.Conv2d(out_channels, out_channels, 1, 1, 0)
     
     def _trunc_normal_(self, tensor, mean=0., std=1.):
         trunc_normal_(tensor, mean=mean, std=std)
@@ -432,22 +447,41 @@ class MixMobileBlock(nn.Module):
             x = self.downsample(x)
         
         if self.add_pos:
-            x = self.pos_embed_lfae(x)
+            lfae_x = self.pos_embed_lfae(x)
         if self.learnable_pos:
-            x = x + self.pos_embed_lfae
+            lfae_x = x + self.pos_embed_lfae
         for lfae in self.lfae_layers:
-            x = lfae(x)
+            lfae_x = lfae(lfae_x)
         
         if self.gfae_depth > 0:
-            if self.add_pos:
-                x = self.pos_embed_gfae(x)
-            if self.learnable_pos:
-                x = x + self.pos_embed_gfae
+            if self.fullbi or self.partbi:
+                if self.add_pos:
+                    gfae_x = self.pos_embed_gfae(x)
+                if self.learnable_pos:
+                    gfae_x = x + self.pos_embed_gfae
+            else:
+                if self.add_pos:
+                    gfae_x = self.pos_embed_gfae(lfae_x)
+                if self.learnable_pos:
+                    gfae_x = lfae_x + self.pos_embed_gfae
             for gfae in self.gfae_layers:
-                x = gfae(x)
+                gfae_x = gfae(gfae_x)
 
-        return x
-
+            if self.fullbi:
+                local2global = torch.sigmoid(gfae_x)
+                global2local = torch.sigmoid(lfae_x)
+                local_feat = lfae_x * local2global
+                global_feat = gfae_x * global2local
+                return self.mixer(local_feat * global_feat)
+            elif self.partbi:
+                local2global = torch.sigmoid(gfae_x)
+                local_feat = lfae_x * local2global
+                return self.mixer(local_feat * gfae_x)
+            else:
+                return gfae_x
+        
+        return lfae_x
+    
 class ModifiedGDC(nn.Module):
     def __init__(self, image_size, in_chs, num_classes, dropout):
         super(ModifiedGDC, self).__init__()
@@ -471,10 +505,9 @@ class ModifiedGDC(nn.Module):
         return x
 
 
-
 class MixMobileNet(nn.Module):
     def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
-                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, mdgc=False,
+                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, partbi=False, fullbi=False, mdgc=False,
                  avgpool=True, dk_ratio=0.2, drop_path=0.0, dropout=0.0):
         super().__init__()
         # Define configurations for each variant
@@ -573,7 +606,7 @@ class MixMobileNet(nn.Module):
         if not pe_stem:
             self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
         else:
-            self.stem = PatchEmbedding(in_channels=3,out_channels=config["channels"][0])
+            self.stem = PatchEmbedding(in_channels=3,out_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
         self.stages = nn.ModuleList()
 
         # Instantiate stages with the configured number of channels and blocks
@@ -595,6 +628,8 @@ class MixMobileNet(nn.Module):
                 learnable_pos=learnable_pos,
                 use_flash=use_flash,
                 avgpool=avgpool,
+                partbi=partbi,
+                fullbi=fullbi,
                 drop_path=drop_path,
                 dropout=dropout,
             )

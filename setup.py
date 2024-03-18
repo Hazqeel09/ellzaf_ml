@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'ellzaf_ml',
   packages = find_packages(),
-  version = '1.4.13',
+  version = '1.4.14',
   license='MIT',
   description = 'Ellzaf ML',
   long_description_content_type = 'text/markdown',
