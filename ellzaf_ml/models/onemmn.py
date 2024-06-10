@@ -488,139 +488,6 @@ class MixMobileBlock(nn.Module):
                 return gfae_x
         
         return lfae_x
-    
-class ModifiedGDC(nn.Module):
-    def __init__(self, image_size, in_chs, num_classes, dropout):
-        super(ModifiedGDC, self).__init__()
-        self.out_chs = in_chs*2
-
-        self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=image_size, groups=in_chs, bias=False)
-        self.bn1 = nn.BatchNorm2d(in_chs)
-        self.dropout = nn.Dropout(dropout)
-        self.conv = nn.Conv2d(in_chs, self.out_chs, kernel_size=1, bias=False)
-        self.bn2 = nn.BatchNorm1d(self.out_chs)
-        self.linear = nn.Linear(self.out_chs, num_classes) if num_classes else nn.Identity()
-
-    def forward(self, x):
-        x = self.conv_dw(x)
-        x = self.bn1(x)
-        x = self.dropout(x)
-        x = self.conv(x)
-        x = x.view(x.size(0), -1)  # Flatten
-        x = self.bn2(x)
-        x = self.linear(x)
-        return x
-
-
-class OneMixMobileNet(nn.Module):
-    def __init__(self, variant="XXS", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
-                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, partbi=False, fullbi=False, mdgc=False,
-                 avgpool=True, dk_ratio=0.2, drop_path=0.0, dropout=0.0):
-        super().__init__()
-        # Define configurations for each variant
-        configs = {
-            "XXS": {
-                "channels": [24, 48, 88, 168],
-                "lfae_depth": [2, 1, 5, 1],
-                "lfae_kernel_size": [3, 5, 7, 9],
-                "gfae_depth": [0, 1, 1, 1],
-                "n_heads":[0,4,4,4],
-            },
-            "XS": {
-                "channels": [32, 64, 100, 192],
-                "lfae_depth": [3, 2, 8, 2],
-                "lfae_kernel_size": [3, 5, 7, 9],
-                "gfae_depth": [0, 1, 1, 1],
-                "n_heads":[0,4,4,4],
-            },
-            "S": {
-                "channels": [48, 96, 160, 304],
-                "lfae_depth": [3, 2, 8, 2],
-                "lfae_kernel_size": [3, 5, 7, 9],
-                "gfae_depth": [0, 1, 1, 1],
-                "n_heads":[0,4,4,4],
-            },
-        }
-        config = configs[variant]
-        self.num_features = config["channels"][-1]
-        self.num_classes = num_classes
-
-        self.img_size = img_size // 4
-
-        if not pe_stem:
-            self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
-        else:
-            self.stem = PatchEmbedding(in_channels=3,out_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
-        self.stages = nn.ModuleList()
-
-        # Instantiate stages with the configured number of channels and blocks
-        in_channels = config["channels"][0]
-        for i, out_channels in enumerate(config["channels"]):
-            mmb = MixMobileBlock(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                lfae_depth=config["lfae_depth"][i],
-                lfae_kernel_size=config["lfae_kernel_size"][i],
-                gfae_depth=config["gfae_depth"][i],
-                feat_size=self.img_size,
-                train=train,
-                spect=lfae_spect,
-                spect_all=lfae_spect_all,
-                dk_ratio=dk_ratio,
-                n_heads=config["n_heads"][i],
-                add_pos=add_pos,
-                learnable_pos=learnable_pos,
-                use_flash=use_flash,
-                avgpool=avgpool,
-                partbi=partbi,
-                fullbi=fullbi,
-                drop_path=drop_path,
-                dropout=dropout,
-            )
-            self.stages.append(mmb)
-            in_channels = out_channels
-            self.img_size = (self.img_size  // 2) + (1 if (self.img_size  // 2) % 2 != 0 else 0)
-
-        if num_classes > 0:
-            if not mdgc:
-                self.head = nn.Sequential(
-                    nn.AdaptiveAvgPool2d(1),
-                    nn.Flatten(),
-                    nn.Linear(in_channels, num_classes)
-                )
-            else:
-                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
-        else:
-            if not mdgc:
-                self.head = nn.Identity()
-            else:
-                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
-
-        if init_weights:
-            self.apply(self._init_weights)
-
-    def _trunc_normal_(self, tensor, mean=0., std=1.):
-        trunc_normal_(tensor, mean=mean, std=std)
-
-    def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
-            self._trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
-        elif isinstance(m, nn.Conv2d):
-            self._trunc_normal_(m.weight, std=.02)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-
-    def forward(self, x):
-        x = self.stem(x)
-        for stage in self.stages:
-            x = stage(x)
-        x = self.head(x)
-        return x
 
 class SEBlock(nn.Module):
     """ Squeeze and Excite module.
@@ -884,52 +751,154 @@ class MobileOneBlock(nn.Module):
         mod_list.add_module('bn', nn.BatchNorm2d(num_features=self.out_channels))
         return mod_list
 
+class ModifiedGDC(nn.Module):
+    def __init__(self, image_size, in_chs, num_classes, dropout):
+        super(ModifiedGDC, self).__init__()
+        self.out_chs = in_chs*2
 
-class MixMobileOne(nn.Module):
-    """ MobileOne Model
+        self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=image_size, groups=in_chs, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_chs)
+        self.dropout = nn.Dropout(dropout)
+        self.conv = nn.Conv2d(in_chs, self.out_chs, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm1d(self.out_chs)
+        self.linear = nn.Linear(self.out_chs, num_classes) if num_classes else nn.Identity()
 
-        Pytorch implementation of `An Improved One millisecond Mobile Backbone` -
-        https://arxiv.org/pdf/2206.04040.pdf
-    """
-    def __init__(self,
-                 num_blocks_per_stage: List[int] = [2, 8, 10, 1],
-                 num_classes: int = 1000,
-                 width_multipliers: Optional[List[float]] = None,
-                 inference_mode: bool = False,
-                 use_se: bool = False,
-                 num_conv_branches: int = 1) -> None:
-        """ Construct MobileOne model.
+    def forward(self, x):
+        x = self.conv_dw(x)
+        x = self.bn1(x)
+        x = self.dropout(x)
+        x = self.conv(x)
+        x = x.view(x.size(0), -1)  # Flatten
+        x = self.bn2(x)
+        x = self.linear(x)
+        return x
 
-        :param num_blocks_per_stage: List of number of blocks per stage.
-        :param num_classes: Number of classes in the dataset.
-        :param width_multipliers: List of width multiplier for blocks in a stage.
-        :param inference_mode: If True, instantiates model in inference mode.
-        :param use_se: Whether to use SE-ReLU activations.
-        :param num_conv_branches: Number of linear conv branches.
-        """
+
+class MixMobileOneNet(nn.Module):
+    def __init__(self, variant="XXS", param_variant="s0", img_size=256, num_classes=1000, train=True, add_pos=True, learnable_pos=False, use_flash=False,
+                 init_weights=False, stem_spect=False, pe_stem=False, lfae_spect=False, lfae_spect_all=False, partbi=False, fullbi=False, mdgc=False,
+                 avgpool=True, dk_ratio=0.2, drop_path=0.0, dropout=0.0, inference_mode=False):
         super().__init__()
+        # Define configurations for each variant
+        configs_mmn = {
+            "XXS": {
+                "channels": [24, 48, 88, 168],
+                "lfae_depth": [2, 1, 5, 1],
+                "lfae_kernel_size": [3, 5, 7, 9],
+                "gfae_depth": [0, 1, 1, 1],
+                "n_heads":[0,4,4,4],
+            },
+            "XS": {
+                "channels": [32, 64, 100, 192],
+                "lfae_depth": [3, 2, 8, 2],
+                "lfae_kernel_size": [3, 5, 7, 9],
+                "gfae_depth": [0, 1, 1, 1],
+                "n_heads":[0,4,4,4],
+            },
+            "S": {
+                "channels": [48, 96, 160, 304],
+                "lfae_depth": [3, 2, 8, 2],
+                "lfae_kernel_size": [3, 5, 7, 9],
+                "gfae_depth": [0, 1, 1, 1],
+                "n_heads":[0,4,4,4],
+            },
+        }
 
-        assert len(width_multipliers) == 4
+        params_mo = {
+            "s0": {"width_multipliers": (0.75, 1.0, 1.0, 2.0),
+                "num_conv_branches": 4},
+            "s1": {"width_multipliers": (1.5, 1.5, 2.0, 2.5)},
+            "s2": {"width_multipliers": (1.5, 2.0, 2.5, 4.0)},
+            "s3": {"width_multipliers": (2.0, 2.5, 3.0, 4.0)},
+            "s4": {"width_multipliers": (3.0, 3.5, 3.5, 4.0),
+                "use_se": True},
+        }
+        config = configs_mmn[variant]
+        self.num_features = config["channels"][-1]
+
+        param = params_mo[param_variant]
+        self.num_blocks_per_stage: List[int] = [2, 8, 10, 1]
+        self.width_multipliers = param["width_multipliers"]
+        assert len(self.width_multipliers) == 4
+        self.in_planes = min(64, int(64 * self.width_multipliers[0]))
+        self.use_se = param.get("use_se", False)
+        self.num_conv_branches = param.get("num_conv_branches", 1)
         self.inference_mode = inference_mode
-        self.in_planes = min(64, int(64 * width_multipliers[0]))
-        self.use_se = use_se
-        self.num_conv_branches = num_conv_branches
+        
+        self.weight_mmn_x = nn.Parameter(torch.tensor(0.5))
+        self.weight_mo_x = nn.Parameter(torch.tensor(0.5))
+        self.num_classes = num_classes
+
+        self.img_size = img_size // 4
+
+        if not pe_stem:
+            self.stem = Stem(input_channels=3, output_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
+        else:
+            self.stem = PatchEmbedding(in_channels=3,out_channels=config["channels"][0], spect=stem_spect, h=img_size, w=img_size / 2 + 1)
+        self.stages = nn.ModuleList()
+
+        # Instantiate stages with the configured number of channels and blocks
+        in_channels = config["channels"][0]
+        for i, out_channels in enumerate(config["channels"]):
+            mmb = MixMobileBlock(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                lfae_depth=config["lfae_depth"][i],
+                lfae_kernel_size=config["lfae_kernel_size"][i],
+                gfae_depth=config["gfae_depth"][i],
+                feat_size=self.img_size,
+                train=train,
+                spect=lfae_spect,
+                spect_all=lfae_spect_all,
+                dk_ratio=dk_ratio,
+                n_heads=config["n_heads"][i],
+                add_pos=add_pos,
+                learnable_pos=learnable_pos,
+                use_flash=use_flash,
+                avgpool=avgpool,
+                partbi=partbi,
+                fullbi=fullbi,
+                drop_path=drop_path,
+                dropout=dropout,
+            )
+            self.stages.append(mmb)
+            in_channels = out_channels
+            self.img_size = (self.img_size  // 2) + (1 if (self.img_size  // 2) % 2 != 0 else 0)
+
+        
 
         # Build stages
         self.stage0 = MobileOneBlock(in_channels=3, out_channels=self.in_planes,
                                      kernel_size=3, stride=2, padding=1,
                                      inference_mode=self.inference_mode)
         self.cur_layer_idx = 1
-        self.stage1 = self._make_stage(int(64 * width_multipliers[0]), num_blocks_per_stage[0],
+        self.stage1 = self._make_stage(int(64 * self.width_multipliers[0]), self.num_blocks_per_stage[0],
                                        num_se_blocks=0)
-        self.stage2 = self._make_stage(int(128 * width_multipliers[1]), num_blocks_per_stage[1],
+        self.stage2 = self._make_stage(int(128 * self.width_multipliers[1]), self.num_blocks_per_stage[1],
                                        num_se_blocks=0)
-        self.stage3 = self._make_stage(int(256 * width_multipliers[2]), num_blocks_per_stage[2],
-                                       num_se_blocks=int(num_blocks_per_stage[2] // 2) if use_se else 0)
-        self.stage4 = self._make_stage(int(512 * width_multipliers[3]), num_blocks_per_stage[3],
-                                       num_se_blocks=num_blocks_per_stage[3] if use_se else 0)
-        self.gap = nn.AdaptiveAvgPool2d(output_size=1)
-        self.linear = nn.Linear(int(512 * width_multipliers[3]), num_classes)
+        self.stage3 = self._make_stage(int(256 * self.width_multipliers[2]), self.num_blocks_per_stage[2],
+                                       num_se_blocks=int(num_blocks_per_stage[2] // 2) if self.use_se else 0)
+        self.stage4 = self._make_stage(int(512 * self.width_multipliers[3]), self.num_blocks_per_stage[3],
+                                       num_se_blocks=self.num_blocks_per_stage[3] if self.use_se else 0)
+
+        in_channels = in_channels + int(512 * self.width_multipliers[3])
+        if num_classes > 0:
+            if not mdgc:
+                self.head = nn.Sequential(
+                    nn.AdaptiveAvgPool2d(1),
+                    nn.Flatten(),
+                    nn.Linear(in_channels, num_classes)
+                )
+            else:
+                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
+        else:
+            if not mdgc:
+                self.head = nn.Identity()
+            else:
+                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
+
+        if init_weights:
+            self.apply(self._init_weights)
 
     def _make_stage(self,
                     planes: int,
@@ -977,41 +946,41 @@ class MixMobileOne(nn.Module):
             self.cur_layer_idx += 1
         return nn.Sequential(*blocks)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """ Apply forward pass. """
-        x = self.stage0(x)
-        x = self.stage1(x)
-        x = self.stage2(x)
-        x = self.stage3(x)
-        x = self.stage4(x)
-        x = self.gap(x)
-        x = x.view(x.size(0), -1)
-        x = self.linear(x)
-        return x
+    def _trunc_normal_(self, tensor, mean=0., std=1.):
+        trunc_normal_(tensor, mean=mean, std=std)
 
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            self._trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
+        elif isinstance(m, nn.Conv2d):
+            self._trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
 
-PARAMS = {
-    "s0": {"width_multipliers": (0.75, 1.0, 1.0, 2.0),
-           "num_conv_branches": 4},
-    "s1": {"width_multipliers": (1.5, 1.5, 2.0, 2.5)},
-    "s2": {"width_multipliers": (1.5, 2.0, 2.5, 4.0)},
-    "s3": {"width_multipliers": (2.0, 2.5, 3.0, 4.0)},
-    "s4": {"width_multipliers": (3.0, 3.5, 3.5, 4.0),
-           "use_se": True},
-}
+    def forward(self, x):
+        mmn_x = self.stem(x)
+        mo_x = self.stage0(x)
+        for stage in self.stages:
+            mmn_x = stage(mmn_x)
 
+        mo_x = self.stage1(mo_x)
+        mo_x = self.stage2(mo_x)
+        mo_x = self.stage3(mo_x)
+        mo_x = self.stage4(mo_x)
 
-def mobileone(num_classes: int = 1000, inference_mode: bool = False,
-              variant: str = "s0") -> nn.Module:
-    """Get MobileOne model.
-
-    :param num_classes: Number of classes in the dataset.
-    :param inference_mode: If True, instantiates model in inference mode.
-    :param variant: Which type of model to generate.
-    :return: MobileOne model. """
-    variant_params = PARAMS[variant]
-    return MobileOne(num_classes=num_classes, inference_mode=inference_mode,
-                     **variant_params)
+        # Compute weighted sum of the outputs
+        weighted_mmn_x = self.weight_mmn_x * mmn_x
+        weighted_mo_x = self.weight_mo_x * mo_x
+        
+        # Concatenate the weighted outputs
+        combined_x = torch.cat((weighted_mmn_x, weighted_mo_x), dim=1)
+        
+        return self.head(combined_x)
 
 
 def reparameterize_model(model: torch.nn.Module) -> nn.Module:
