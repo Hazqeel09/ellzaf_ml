@@ -72,10 +72,10 @@ def build_finetune_optimizer(model,lr, distil=False, vit=True):
     return optimizer
 
 def get_mmn_layer(name, num_layers):
-    if name.startswith("stages"):
+    if name.startswith("stages") or name.startswith("mobileone_stages"):
         layer_id = int(name.split('.')[1])
         return layer_id + 1
-    elif name.startswith("stem"):
+    elif name.startswith("stem") or name.startswith("stage0"):
         return 0
     else:
         return num_layers - 1

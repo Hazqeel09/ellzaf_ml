@@ -6,6 +6,7 @@ import numpy as np
 from collections import namedtuple
 from packaging import version
 from typing import Optional, List, Tuple
+import math
 
 import copy
 import torch
@@ -752,19 +753,23 @@ class MobileOneBlock(nn.Module):
         return mod_list
 
 class ModifiedGDC(nn.Module):
-    def __init__(self, image_size, in_chs, num_classes, dropout):
+    def __init__(self, image_size, kernel_size, in_chs, in_chs2, num_classes, dropout):
         super(ModifiedGDC, self).__init__()
-        self.out_chs = in_chs*2
+        self.out_chs = (in_chs + in_chs2)  * 2
 
         self.conv_dw = nn.Conv2d(in_chs, in_chs, kernel_size=image_size, groups=in_chs, bias=False)
-        self.bn1 = nn.BatchNorm2d(in_chs)
+        self.conv_dw2 = nn.Conv2d(in_chs2, in_chs2, kernel_size=kernel_size, groups=in_chs2, bias=False)
+        total_in_chs = in_chs + in_chs2
+        self.bn1 = nn.BatchNorm2d(total_in_chs)
         self.dropout = nn.Dropout(dropout)
-        self.conv = nn.Conv2d(in_chs, self.out_chs, kernel_size=1, bias=False)
+        self.conv = nn.Conv2d(total_in_chs, self.out_chs, kernel_size=1, bias=False)
         self.bn2 = nn.BatchNorm1d(self.out_chs)
         self.linear = nn.Linear(self.out_chs, num_classes) if num_classes else nn.Identity()
 
-    def forward(self, x):
+    def forward(self, x, y):
         x = self.conv_dw(x)
+        y = self.conv_dw2(y)
+        x = torch.cat((x, y), dim=1)
         x = self.bn1(x)
         x = self.dropout(x)
         x = self.conv(x)
@@ -825,8 +830,6 @@ class MixMobileOneNet(nn.Module):
         self.num_conv_branches = param.get("num_conv_branches", 1)
         self.inference_mode = inference_mode
         
-        self.weight_mmn_x = nn.Parameter(torch.tensor(0.5))
-        self.weight_mo_x = nn.Parameter(torch.tensor(0.5))
         self.num_classes = num_classes
 
         self.img_size = img_size // 4
@@ -865,37 +868,46 @@ class MixMobileOneNet(nn.Module):
             in_channels = out_channels
             self.img_size = (self.img_size  // 2) + (1 if (self.img_size  // 2) % 2 != 0 else 0)
 
-        
-
         # Build stages
         self.stage0 = MobileOneBlock(in_channels=3, out_channels=self.in_planes,
                                      kernel_size=3, stride=2, padding=1,
                                      inference_mode=self.inference_mode)
         self.cur_layer_idx = 1
-        self.stage1 = self._make_stage(int(64 * self.width_multipliers[0]), self.num_blocks_per_stage[0],
-                                       num_se_blocks=0)
-        self.stage2 = self._make_stage(int(128 * self.width_multipliers[1]), self.num_blocks_per_stage[1],
-                                       num_se_blocks=0)
-        self.stage3 = self._make_stage(int(256 * self.width_multipliers[2]), self.num_blocks_per_stage[2],
-                                       num_se_blocks=int(num_blocks_per_stage[2] // 2) if self.use_se else 0)
-        self.stage4 = self._make_stage(int(512 * self.width_multipliers[3]), self.num_blocks_per_stage[3],
-                                       num_se_blocks=self.num_blocks_per_stage[3] if self.use_se else 0)
+        self.mobileone_stages = nn.ModuleList()
+        stage_configs = [
+            (int(64 * self.width_multipliers[0]), self.num_blocks_per_stage[0], 0),
+            (int(128 * self.width_multipliers[1]), self.num_blocks_per_stage[1], 0),
+            (int(256 * self.width_multipliers[2]), self.num_blocks_per_stage[2], int(self.num_blocks_per_stage[2] // 2) if self.use_se else 0),
+            (int(512 * self.width_multipliers[3]), self.num_blocks_per_stage[3], self.num_blocks_per_stage[3] if self.use_se else 0)
+        ]
 
-        in_channels = in_channels + int(512 * self.width_multipliers[3])
+        for out_channels, num_blocks, num_se_blocks in stage_configs:
+            stage = self._make_stage(out_channels, num_blocks, num_se_blocks)
+            self.mobileone_stages.append(stage)
+
+
+        
+
+        self.weight_mmn_x = nn.Parameter(torch.zeros(1, in_channels, self.img_size*2, self.img_size*2))
+        self.weight_mo_x = nn.Parameter(torch.zeros(1, int(512 * self.width_multipliers[3]), math.ceil(img_size / 32), math.ceil(img_size / 32)))
+
+        if not mdgc:
+            self.gap = nn.AdaptiveAvgPool2d(1)
+            in_channels = in_channels + int(512 * self.width_multipliers[3])
+        self.mdgc = mdgc
         if num_classes > 0:
             if not mdgc:
                 self.head = nn.Sequential(
-                    nn.AdaptiveAvgPool2d(1),
                     nn.Flatten(),
                     nn.Linear(in_channels, num_classes)
                 )
             else:
-                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
+                self.head =  ModifiedGDC(self.img_size*2, math.ceil(img_size / 32), in_channels, int(512 * self.width_multipliers[3]), num_classes, dropout)
         else:
             if not mdgc:
                 self.head = nn.Identity()
             else:
-                self.head =  ModifiedGDC(self.img_size*2, in_channels, num_classes, dropout)
+                self.head =  ModifiedGDC(self.img_size*2, math.ceil(img_size / 32), in_channels, int(512 * self.width_multipliers[3]), num_classes, dropout)
 
         if init_weights:
             self.apply(self._init_weights)
@@ -950,9 +962,9 @@ class MixMobileOneNet(nn.Module):
         trunc_normal_(tensor, mean=mean, std=std)
 
     def _init_weights(self, m):
-        if isinstance(m, nn.Linear):
+        if isinstance(m, nn.Linear): 
             self._trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
+            if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
@@ -961,6 +973,8 @@ class MixMobileOneNet(nn.Module):
             self._trunc_normal_(m.weight, std=.02)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.Parameter):
+            self._trunc_normal_(m.weight, std=.02)
 
     def forward(self, x):
         mmn_x = self.stem(x)
@@ -968,19 +982,20 @@ class MixMobileOneNet(nn.Module):
         for stage in self.stages:
             mmn_x = stage(mmn_x)
 
-        mo_x = self.stage1(mo_x)
-        mo_x = self.stage2(mo_x)
-        mo_x = self.stage3(mo_x)
-        mo_x = self.stage4(mo_x)
+        for stage in self.mobileone_stages:
+            mo_x = stage(mo_x)
 
-        # Compute weighted sum of the outputs
-        weighted_mmn_x = self.weight_mmn_x * mmn_x
-        weighted_mo_x = self.weight_mo_x * mo_x
-        
-        # Concatenate the weighted outputs
-        combined_x = torch.cat((weighted_mmn_x, weighted_mo_x), dim=1)
-        
-        return self.head(combined_x)
+        if not self.mdgc:
+            # Compute weighted sum of the outputs
+            weighted_mmn_x = self.gap(self.weight_mmn_x * mmn_x)
+            weighted_mo_x = self.gap(self.weight_mo_x * mo_x)
+            
+            # Concatenate the weighted outputs
+            combined_x = torch.cat((weighted_mmn_x, weighted_mo_x), dim=1)
+            
+            return self.head(combined_x)
+
+        return self.head(self.weight_mmn_x * mmn_x, self.weight_mo_x * mo_x)
 
 
 def reparameterize_model(model: torch.nn.Module) -> nn.Module:
