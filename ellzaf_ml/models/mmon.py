@@ -7,6 +7,7 @@ from collections import namedtuple
 from packaging import version
 from typing import Optional, List, Tuple
 import math
+import torch.nn.init as init
 
 import copy
 import torch
@@ -885,11 +886,10 @@ class MixMobileOneNet(nn.Module):
             stage = self._make_stage(out_channels, num_blocks, num_se_blocks)
             self.mobileone_stages.append(stage)
 
-
-        
-
         self.weight_mmn_x = nn.Parameter(torch.zeros(1, in_channels, self.img_size*2, self.img_size*2))
         self.weight_mo_x = nn.Parameter(torch.zeros(1, int(512 * self.width_multipliers[3]), math.ceil(img_size / 32), math.ceil(img_size / 32)))
+        init.xavier_uniform_(self.weight_mmn_x)
+        init.xavier_uniform_(self.weight_mo_x)
 
         if not mdgc:
             self.gap = nn.AdaptiveAvgPool2d(1)
@@ -973,8 +973,6 @@ class MixMobileOneNet(nn.Module):
             self._trunc_normal_(m.weight, std=.02)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.Parameter):
-            self._trunc_normal_(m.weight, std=.02)
 
     def forward(self, x):
         mmn_x = self.stem(x)
